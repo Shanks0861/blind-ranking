@@ -34,6 +34,18 @@ class AuthService {
     return _createUserDoc(credential.user!, displayName);
   }
 
+  Future<UserModel?> signInAnonymously(String displayName) async {
+    try {
+      final credential = await _auth.signInAnonymously();
+      final user = credential.user;
+      if (user == null) return null;
+      await user.updateDisplayName(displayName);
+      return await _getOrCreateUser(user);
+    } catch (e) {
+      rethrow;
+    }
+  }
+
   Future<void> signOut() async {
     await _auth.signOut();
   }
@@ -97,6 +109,21 @@ class LobbyService {
         .doc(lobbyId)
         .set(lobby.toFirestore());
     return lobby;
+  }
+
+  Future<LobbyModel?> getLobbyByCode(String code) async {
+    try {
+      final doc = await _db
+          .collection(AppConstants.colLobbies)
+          .doc(code.toUpperCase())
+          .get();
+      if (!doc.exists) return null;
+      final lobby = LobbyModel.fromFirestore(doc);
+      if (lobby.phase != AppConstants.phaseSetup) return null;
+      return lobby;
+    } catch (e) {
+      return null;
+    }
   }
 
   Future<LobbyModel?> getLobby(String lobbyId) async {

@@ -3,14 +3,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:go_router/go_router.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../providers/game_providers.dart';
 import '../../widgets/common/common_widgets.dart';
+import 'phase_intro_screen.dart';
 
 class RoleRevealScreen extends ConsumerStatefulWidget {
   final String lobbyId;
-
   const RoleRevealScreen({super.key, required this.lobbyId});
 
   @override
@@ -19,8 +20,10 @@ class RoleRevealScreen extends ConsumerStatefulWidget {
 
 class _RoleRevealScreenState extends ConsumerState<RoleRevealScreen>
     with SingleTickerProviderStateMixin {
+  bool _showIntro = true;
   bool _isFlipped = false;
   bool _roleRevealed = false;
+  bool _confirmingStart = false;
   late AnimationController _flipCtrl;
   late Animation<double> _flipAnim;
 
@@ -42,24 +45,46 @@ class _RoleRevealScreenState extends ConsumerState<RoleRevealScreen>
     super.dispose();
   }
 
-  void _revealRole() {
+  void _revealRole() async {
     if (_isFlipped) return;
     _flipCtrl.forward();
     setState(() {
       _isFlipped = true;
       _roleRevealed = true;
     });
+
+    // Mark this player as having revealed their role in Firestore
+    final user = ref.read(authServiceProvider).currentUser;
+    if (user == null) return;
+    await FirebaseFirestore.instance
+        .collection(AppConstants.colLobbies)
+        .doc(widget.lobbyId)
+        .collection(AppConstants.colPlayers)
+        .doc(user.uid)
+        .update({'roleRevealed': true});
   }
 
-  Future<void> _confirmReady(String lobbyId, String playerId) async {
-    await ref.read(lobbyServiceProvider).startDiscussion(lobbyId);
+  Future<void> _startDiscussion() async {
+    setState(() => _confirmingStart = true);
+    try {
+      await ref.read(lobbyServiceProvider).startDiscussion(widget.lobbyId);
+    } finally {
+      if (mounted) setState(() => _confirmingStart = false);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    // Show cinematic intro first
+    if (_showIntro) {
+      return PhaseIntroScreen(
+        data: PhaseIntroData.roleReveal,
+        onComplete: () => setState(() => _showIntro = false),
+      );
+    }
+
     final gameStateAsync = ref.watch(gameStateProvider(widget.lobbyId));
 
-    // Phase navigation
     ref.listen(gameStateProvider(widget.lobbyId), (_, next) {
       next.whenData((state) {
         if (state?.lobby.phase == AppConstants.phaseDiscussion) {
@@ -91,7 +116,13 @@ class _RoleRevealScreenState extends ConsumerState<RoleRevealScreen>
                 return const Center(child: Text('Spieler nicht gefunden'));
               }
 
-              final isHost = state.currentPlayer?.userId == state.lobby.hostId;
+              final isHost = currentPlayer.userId == state.lobby.hostId;
+
+              // Check how many players have revealed their role
+              final totalPlayers = state.players.length;
+              final revealedCount =
+                  state.players.where((p) => p.roleRevealed == true).length;
+              final allRevealed = revealedCount >= totalPlayers;
 
               return SafeArea(
                 child: Padding(
@@ -99,13 +130,14 @@ class _RoleRevealScreenState extends ConsumerState<RoleRevealScreen>
                   child: Column(
                     children: [
                       const SizedBox(height: 20),
-                      Text(
-                        'DEINE ROLLE',
-                        style: Theme.of(context)
-                            .textTheme
-                            .labelMedium
-                            ?.copyWith(letterSpacing: 4),
-                      ).animate().fadeIn(),
+
+                      Text('DEINE ROLLE',
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .labelMedium
+                                  ?.copyWith(letterSpacing: 4))
+                          .animate()
+                          .fadeIn(),
 
                       const SizedBox(height: 8),
                       Text(
@@ -161,25 +193,83 @@ class _RoleRevealScreenState extends ConsumerState<RoleRevealScreen>
                             .fadeOut(duration: 800.ms),
 
                       if (_roleRevealed) ...[
-                        // Role description
                         _roleDescription(context, currentPlayer.role),
-                        const SizedBox(height: 24),
+                        const SizedBox(height: 20),
 
-                        if (isHost)
-                          MafiaButton(
-                            label: 'Spiel starten',
-                            isDestructive: true,
-                            onPressed: () => _confirmReady(
-                              widget.lobbyId,
-                              currentPlayer.playerId,
+                        // Progress: who has revealed
+                        _revealProgress(context, revealedCount, totalPlayers),
+                        const SizedBox(height: 16),
+
+                        if (isHost) ...[
+                          if (!allRevealed)
+                            Container(
+                              padding: const EdgeInsets.all(14),
+                              decoration: BoxDecoration(
+                                color: AppColors.card,
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(color: AppColors.border),
+                              ),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  const SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(
+                                      color: AppColors.textMuted,
+                                      strokeWidth: 2,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Text(
+                                    'Warte bis alle ihre Rolle geöffnet haben...',
+                                    style:
+                                        Theme.of(context).textTheme.bodySmall,
+                                  ),
+                                ],
+                              ),
+                            ).animate().fadeIn()
+                          else
+                            MafiaButton(
+                              label: 'Diskussion starten',
+                              isDestructive: true,
+                              isLoading: _confirmingStart,
+                              onPressed: _startDiscussion,
+                            )
+                                .animate()
+                                .fadeIn()
+                                .scale(begin: const Offset(0.9, 0.9)),
+                        ] else ...[
+                          Container(
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              color: AppColors.card,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: AppColors.border),
+                            ),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  _roleRevealed
+                                      ? Icons.check_circle_outline
+                                      : Icons.hourglass_empty,
+                                  color: _roleRevealed
+                                      ? AppColors.alive
+                                      : AppColors.textMuted,
+                                  size: 18,
+                                ),
+                                const SizedBox(width: 10),
+                                Text(
+                                  _roleRevealed
+                                      ? 'Rolle geöffnet — warte auf den Spielführer'
+                                      : 'Warte auf den Spielführer...',
+                                  style: Theme.of(context).textTheme.bodySmall,
+                                ),
+                              ],
                             ),
                           ).animate().fadeIn(),
-
-                        if (!isHost)
-                          Text(
-                            'Warte auf den Spielführer...',
-                            style: Theme.of(context).textTheme.bodyMedium,
-                          ).animate().fadeIn(),
+                        ],
                       ],
 
                       const SizedBox(height: 32),
@@ -194,6 +284,36 @@ class _RoleRevealScreenState extends ConsumerState<RoleRevealScreen>
     );
   }
 
+  Widget _revealProgress(BuildContext context, int revealed, int total) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppColors.card,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Text(
+            '$revealed / $total',
+            style: TextStyle(
+              fontFamily: 'Cinzel',
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+              color: revealed >= total ? AppColors.alive : AppColors.gold,
+            ),
+          ),
+          const SizedBox(width: 10),
+          Text(
+            'Spieler haben ihre Rolle geöffnet',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+        ],
+      ),
+    ).animate().fadeIn(duration: 400.ms);
+  }
+
   Widget _buildCardBack(BuildContext context) {
     return Container(
       width: 240,
@@ -201,10 +321,7 @@ class _RoleRevealScreenState extends ConsumerState<RoleRevealScreen>
       decoration: BoxDecoration(
         color: AppColors.card,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: AppColors.blood.withOpacity(0.4),
-          width: 2,
-        ),
+        border: Border.all(color: AppColors.blood.withOpacity(0.4), width: 2),
         boxShadow: [
           BoxShadow(
             color: AppColors.blood.withOpacity(0.15),
@@ -218,21 +335,17 @@ class _RoleRevealScreenState extends ConsumerState<RoleRevealScreen>
         children: [
           const Text('🔪', style: TextStyle(fontSize: 64)),
           const SizedBox(height: 20),
-          Text(
-            'MAFIA',
-            style: Theme.of(context)
-                .textTheme
-                .headlineLarge
-                ?.copyWith(color: AppColors.blood.withOpacity(0.4)),
-          ),
+          Text('MAFIA',
+              style: Theme.of(context)
+                  .textTheme
+                  .headlineLarge
+                  ?.copyWith(color: AppColors.blood.withOpacity(0.4))),
           const SizedBox(height: 8),
-          Text(
-            'GEHEIME IDENTITÄT',
-            style: Theme.of(context)
-                .textTheme
-                .labelMedium
-                ?.copyWith(color: AppColors.textMuted),
-          ),
+          Text('GEHEIME IDENTITÄT',
+              style: Theme.of(context)
+                  .textTheme
+                  .labelMedium
+                  ?.copyWith(color: AppColors.textMuted)),
         ],
       ),
     );
@@ -241,7 +354,6 @@ class _RoleRevealScreenState extends ConsumerState<RoleRevealScreen>
   Widget _buildRoleFront(BuildContext context, player) {
     Color roleColor;
     String roleEmoji;
-
     switch (player.role) {
       case AppConstants.roleMafia:
         roleColor = AppColors.blood;
@@ -253,7 +365,6 @@ class _RoleRevealScreenState extends ConsumerState<RoleRevealScreen>
         roleColor = AppColors.gold;
         roleEmoji = '👨‍🌾';
     }
-
     return Container(
       width: 240,
       height: 320,
@@ -309,7 +420,6 @@ class _RoleRevealScreenState extends ConsumerState<RoleRevealScreen>
         desc =
             'Du bist Bürger. Analysiere, diskutiere und eliminiere alle Mafia-Mitglieder durch Voting.';
     }
-
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(

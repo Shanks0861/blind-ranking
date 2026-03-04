@@ -7,20 +7,34 @@ import '../../../core/theme/app_theme.dart';
 import '../../../data/models/game_models.dart';
 import '../../../providers/game_providers.dart';
 import '../../widgets/common/common_widgets.dart';
+import 'phase_intro_screen.dart';
 
-class GameScreen extends ConsumerWidget {
+class GameScreen extends ConsumerStatefulWidget {
   final String lobbyId;
-
   const GameScreen({super.key, required this.lobbyId});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<GameScreen> createState() => _GameScreenState();
+}
+
+class _GameScreenState extends ConsumerState<GameScreen> {
+  bool _showIntro = true;
+  String? _lastPhase;
+
+  @override
+  Widget build(BuildContext context) {
+    final lobbyId = widget.lobbyId;
     final gameStateAsync = ref.watch(gameStateProvider(lobbyId));
 
     // Phase navigation
     ref.listen(gameStateProvider(lobbyId), (_, next) {
       next.whenData((state) {
         if (state == null) return;
+        // Show intro when phase changes
+        if (_lastPhase != null && _lastPhase != state.lobby.phase) {
+          setState(() => _showIntro = true);
+        }
+        _lastPhase = state.lobby.phase;
         switch (state.lobby.phase) {
           case AppConstants.phaseVoting:
             context.go('/voting/$lobbyId');
@@ -29,6 +43,14 @@ class GameScreen extends ConsumerWidget {
         }
       });
     });
+
+    // Show discussion intro
+    if (_showIntro) {
+      return PhaseIntroScreen(
+        data: PhaseIntroData.discussion,
+        onComplete: () => setState(() => _showIntro = false),
+      );
+    }
 
     return Scaffold(
       body: gameStateAsync.when(

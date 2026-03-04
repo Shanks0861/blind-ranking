@@ -16,6 +16,7 @@ import '../presentation/screens/game/game_over_screen.dart';
 import '../presentation/screens/auth/splash_screen.dart';
 import '../presentation/screens/auth/forgot_password_screen.dart';
 import '../presentation/screens/profile/profile_screen.dart';
+import '../presentation/screens/auth/guest_screen.dart';
 import 'game_providers.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
@@ -43,6 +44,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: AppRoutes.login,
         builder: (_, __) => const LoginScreen(),
+      ),
+      GoRoute(
+        path: AppRoutes.guest,
+        builder: (_, __) => const GuestScreen(),
       ),
       GoRoute(
         path: AppRoutes.profile,

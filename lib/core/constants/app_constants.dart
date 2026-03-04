@@ -46,4 +46,5 @@ class AppRoutes {
   static const String gameOver = '/gameover/:lobbyId';
   static const String forgotPassword = '/forgot-password';
   static const String profile = '/profile';
+  static const String guest = '/guest';
 }

@@ -104,25 +104,67 @@ class LobbyScreen extends ConsumerWidget {
                     padding: const EdgeInsets.all(20),
                     child: Column(
                       children: [
-                        // QR Code
-                        if (settings.gameMode == 'multi_device')
-                          Container(
-                            margin: const EdgeInsets.symmetric(vertical: 16),
-                            padding: const EdgeInsets.all(16),
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: QrImageView(
-                              data: lobbyId,
-                              version: QrVersions.auto,
-                              size: 160,
-                              backgroundColor: Colors.white,
-                            ),
-                          )
-                              .animate()
-                              .fadeIn()
-                              .scale(begin: const Offset(0.9, 0.9)),
+                        // QR Code + Lobby Code — immer sichtbar
+                        Container(
+                          margin: const EdgeInsets.symmetric(vertical: 16),
+                          padding: const EdgeInsets.all(20),
+                          decoration: BoxDecoration(
+                            color: AppColors.card,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: AppColors.border),
+                          ),
+                          child: Column(
+                            children: [
+                              Text(
+                                'FREUNDE EINLADEN',
+                                style: TextStyle(
+                                  fontFamily: 'Cinzel',
+                                  fontSize: 10,
+                                  letterSpacing: 3,
+                                  color: AppColors.textMuted,
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              // QR Code
+                              Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: QrImageView(
+                                  data: lobbyId,
+                                  version: QrVersions.auto,
+                                  size: 140,
+                                  backgroundColor: Colors.white,
+                                ),
+                              ),
+                              const SizedBox(height: 14),
+                              // Big lobby code
+                              Text(
+                                lobbyId,
+                                style: const TextStyle(
+                                  fontFamily: 'Cinzel',
+                                  fontSize: 32,
+                                  fontWeight: FontWeight.w700,
+                                  color: AppColors.gold,
+                                  letterSpacing: 10,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                'Code abtippen oder QR scannen',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: AppColors.textMuted,
+                                ),
+                              ),
+                            ],
+                          ),
+                        )
+                            .animate()
+                            .fadeIn()
+                            .scale(begin: const Offset(0.9, 0.9)),
 
                         // Players counter
                         Padding(
