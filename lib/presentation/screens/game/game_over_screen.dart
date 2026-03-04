@@ -36,6 +36,15 @@ class _GameOverScreenState extends ConsumerState<GameOverScreen> {
   Widget build(BuildContext context) {
     final gameStateAsync = ref.watch(gameStateProvider(widget.lobbyId));
 
+    // ALL players navigate back to lobby when host resets game
+    ref.listen(gameStateProvider(widget.lobbyId), (_, next) {
+      next.whenData((state) {
+        if (state?.lobby.phase == AppConstants.phaseSetup) {
+          context.go('/lobby/${widget.lobbyId}');
+        }
+      });
+    });
+
     return Scaffold(
       body: gameStateAsync.when(
         loading: () => const Center(

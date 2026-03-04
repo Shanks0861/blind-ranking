@@ -53,6 +53,8 @@ class _VotingScreenState extends ConsumerState<VotingScreen> {
       next.whenData((state) {
         if (state == null) return;
         switch (state.lobby.phase) {
+          case AppConstants.phaseSetup:
+            context.go('/lobby/${widget.lobbyId}');
           case AppConstants.phaseEvaluation:
           case AppConstants.phaseDiscussion:
             context.go('/game/${widget.lobbyId}');

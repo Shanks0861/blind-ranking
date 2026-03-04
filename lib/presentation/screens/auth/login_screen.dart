@@ -109,7 +109,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                 color: AppColors.textMuted, size: 20),
                           ),
                         ).animate().fadeIn(delay: 400.ms).slideY(begin: 0.2),
+
                         const SizedBox(height: 16),
+
                         TextField(
                           controller: _passwordCtrl,
                           obscureText: _obscurePassword,
@@ -132,6 +134,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             ),
                           ),
                         ).animate().fadeIn(delay: 500.ms).slideY(begin: 0.2),
+
                         if (_error != null) ...[
                           const SizedBox(height: 12),
                           Container(
@@ -158,6 +161,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             ),
                           ).animate().fadeIn().shakeX(hz: 3),
                         ],
+
                         const SizedBox(height: 8),
                         Align(
                           alignment: Alignment.centerRight,
@@ -178,14 +182,18 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             ),
                           ),
                         ),
+
                         const SizedBox(height: 20),
+
                         MafiaButton(
                           label: 'Anmelden',
                           onPressed: _login,
                           isLoading: _loading,
                           isDestructive: true,
                         ).animate().fadeIn(delay: 600.ms),
+
                         const SizedBox(height: 24),
+
                         TextButton(
                           onPressed: () => context.go(AppRoutes.register),
                           child: RichText(
@@ -205,6 +213,39 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             ),
                           ),
                         ).animate().fadeIn(delay: 800.ms),
+
+                        const SizedBox(height: 8),
+
+                        // Divider
+                        Row(
+                          children: [
+                            Expanded(child: Divider(color: AppColors.border)),
+                            Padding(
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 12),
+                              child: Text('oder',
+                                  style: TextStyle(
+                                      color: AppColors.textMuted,
+                                      fontSize: 12)),
+                            ),
+                            Expanded(child: Divider(color: AppColors.border)),
+                          ],
+                        ).animate().fadeIn(delay: 900.ms),
+
+                        const SizedBox(height: 8),
+
+                        TextButton.icon(
+                          onPressed: () => context.go(AppRoutes.guest),
+                          icon: const Icon(Icons.door_front_door_outlined,
+                              color: AppColors.textMuted, size: 18),
+                          label: const Text(
+                            'Als Gast spielen',
+                            style: TextStyle(
+                              color: AppColors.textMuted,
+                              fontSize: 14,
+                            ),
+                          ),
+                        ).animate().fadeIn(delay: 1000.ms),
                       ],
                     ),
                   ],
