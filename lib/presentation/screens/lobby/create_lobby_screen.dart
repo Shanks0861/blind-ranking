@@ -30,6 +30,12 @@ class _CreateLobbyScreenState extends ConsumerState<CreateLobbyScreen> {
       _mafiaCount >= 1;
 
   Future<void> _createLobby() async {
+    // Single device — go directly to local game
+    if (_gameMode == 'single_device') {
+      context.go(AppRoutes.singleDevice);
+      return;
+    }
+
     setState(() => _loading = true);
     try {
       final user = await ref.read(authServiceProvider).getCurrentUserModel();
@@ -123,112 +129,117 @@ class _CreateLobbyScreenState extends ConsumerState<CreateLobbyScreen> {
                       ],
                     ).animate().fadeIn(delay: 100.ms),
 
-                    const SizedBox(height: 32),
+                    if (_gameMode == 'multi_device') ...[
+                      const SizedBox(height: 32),
 
-                    // Role distribution
-                    _sectionLabel('ROLLENVERTEILUNG'),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Gesamt: $_total Spieler',
-                      style: TextStyle(
-                        color: _isValid ? AppColors.gold : AppColors.blood,
-                        fontSize: 13,
-                        fontFamily: 'Cinzel',
+                      // Role distribution
+                      _sectionLabel('ROLLENVERTEILUNG'),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Gesamt: $_total Spieler',
+                        style: TextStyle(
+                          color: _isValid ? AppColors.gold : AppColors.blood,
+                          fontSize: 13,
+                          fontFamily: 'Cinzel',
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 16),
+                      const SizedBox(height: 16),
 
-                    _roleCounter(
-                      emoji: '🔪',
-                      label: 'Mafia',
-                      value: _mafiaCount,
-                      color: AppColors.blood,
-                      onDecrement: _mafiaCount > 1
-                          ? () => setState(() => _mafiaCount--)
-                          : null,
-                      onIncrement: _total < AppConstants.maxPlayers
-                          ? () => setState(() => _mafiaCount++)
-                          : null,
-                    ).animate().fadeIn(delay: 150.ms),
+                      _roleCounter(
+                        emoji: '🔪',
+                        label: 'Mafia',
+                        value: _mafiaCount,
+                        color: AppColors.blood,
+                        onDecrement: _mafiaCount > 1
+                            ? () => setState(() => _mafiaCount--)
+                            : null,
+                        onIncrement: _total < AppConstants.maxPlayers
+                            ? () => setState(() => _mafiaCount++)
+                            : null,
+                      ).animate().fadeIn(delay: 150.ms),
 
-                    const SizedBox(height: 12),
+                      const SizedBox(height: 12),
 
-                    _roleCounter(
-                      emoji: '👨‍🌾',
-                      label: 'Bürger',
-                      value: _citizenCount,
-                      color: AppColors.textSecondary,
-                      onDecrement: _citizenCount > 1
-                          ? () => setState(() => _citizenCount--)
-                          : null,
-                      onIncrement: _total < AppConstants.maxPlayers
-                          ? () => setState(() => _citizenCount++)
-                          : null,
-                    ).animate().fadeIn(delay: 200.ms),
+                      _roleCounter(
+                        emoji: '👨‍🌾',
+                        label: 'Bürger',
+                        value: _citizenCount,
+                        color: AppColors.textSecondary,
+                        onDecrement: _citizenCount > 1
+                            ? () => setState(() => _citizenCount--)
+                            : null,
+                        onIncrement: _total < AppConstants.maxPlayers
+                            ? () => setState(() => _citizenCount++)
+                            : null,
+                      ).animate().fadeIn(delay: 200.ms),
 
-                    const SizedBox(height: 12),
+                      const SizedBox(height: 12),
 
-                    _roleCounter(
-                      emoji: '🏹',
-                      label: 'Jäger',
-                      value: _hunterCount,
-                      color: AppColors.hunterLight,
-                      onDecrement: _hunterCount > 0
-                          ? () => setState(() => _hunterCount--)
-                          : null,
-                      onIncrement: _total < AppConstants.maxPlayers
-                          ? () => setState(() => _hunterCount++)
-                          : null,
-                    ).animate().fadeIn(delay: 250.ms),
+                      _roleCounter(
+                        emoji: '🏹',
+                        label: 'Jäger',
+                        value: _hunterCount,
+                        color: AppColors.hunterLight,
+                        onDecrement: _hunterCount > 0
+                            ? () => setState(() => _hunterCount--)
+                            : null,
+                        onIncrement: _total < AppConstants.maxPlayers
+                            ? () => setState(() => _hunterCount++)
+                            : null,
+                      ).animate().fadeIn(delay: 250.ms),
 
-                    const SizedBox(height: 32),
+                      const SizedBox(height: 32),
 
-                    // Voting duration
-                    _sectionLabel('VOTING-DAUER'),
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [60, 90, 120, 180].map((sec) {
-                        final selected = _votingDuration == sec;
-                        return Padding(
-                          padding: const EdgeInsets.only(right: 10),
-                          child: GestureDetector(
-                            onTap: () => setState(() => _votingDuration = sec),
-                            child: AnimatedContainer(
-                              duration: const Duration(milliseconds: 200),
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 18, vertical: 12),
-                              decoration: BoxDecoration(
-                                color: selected
-                                    ? AppColors.gold.withOpacity(0.15)
-                                    : AppColors.card,
-                                borderRadius: BorderRadius.circular(4),
-                                border: Border.all(
+                      // Voting duration
+                      _sectionLabel('VOTING-DAUER'),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [60, 90, 120, 180].map((sec) {
+                          final selected = _votingDuration == sec;
+                          return Padding(
+                            padding: const EdgeInsets.only(right: 10),
+                            child: GestureDetector(
+                              onTap: () =>
+                                  setState(() => _votingDuration = sec),
+                              child: AnimatedContainer(
+                                duration: const Duration(milliseconds: 200),
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 18, vertical: 12),
+                                decoration: BoxDecoration(
                                   color: selected
-                                      ? AppColors.gold
-                                      : AppColors.border,
-                                  width: selected ? 1.5 : 1,
+                                      ? AppColors.gold.withOpacity(0.15)
+                                      : AppColors.card,
+                                  borderRadius: BorderRadius.circular(4),
+                                  border: Border.all(
+                                    color: selected
+                                        ? AppColors.gold
+                                        : AppColors.border,
+                                    width: selected ? 1.5 : 1,
+                                  ),
                                 ),
-                              ),
-                              child: Text(
-                                '${sec}s',
-                                style: TextStyle(
-                                  fontFamily: 'Cinzel',
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w600,
-                                  color: selected
-                                      ? AppColors.gold
-                                      : AppColors.textSecondary,
+                                child: Text(
+                                  '${sec}s',
+                                  style: TextStyle(
+                                    fontFamily: 'Cinzel',
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600,
+                                    color: selected
+                                        ? AppColors.gold
+                                        : AppColors.textSecondary,
+                                  ),
                                 ),
                               ),
                             ),
-                          ),
-                        );
-                      }).toList(),
-                    ).animate().fadeIn(delay: 300.ms),
+                          );
+                        }).toList(),
+                      ).animate().fadeIn(delay: 300.ms),
 
-                    const SizedBox(height: 40),
+                      const SizedBox(height: 40),
+                    ], // end multi_device only
 
-                    if (!_isValid)
+                    const SizedBox(height: 32),
+
+                    if (!_isValid && _gameMode == 'multi_device')
                       Padding(
                         padding: const EdgeInsets.only(bottom: 16),
                         child: Container(
@@ -248,10 +259,14 @@ class _CreateLobbyScreenState extends ConsumerState<CreateLobbyScreen> {
                       ),
 
                     MafiaButton(
-                      label: 'Lobby erstellen',
+                      label: _gameMode == 'single_device'
+                          ? 'Spiel starten'
+                          : 'Lobby erstellen',
                       isDestructive: true,
                       isLoading: _loading,
-                      onPressed: _isValid ? _createLobby : null,
+                      onPressed: (_gameMode == 'single_device' || _isValid)
+                          ? _createLobby
+                          : null,
                     ).animate().fadeIn(delay: 350.ms),
 
                     const SizedBox(height: 24),

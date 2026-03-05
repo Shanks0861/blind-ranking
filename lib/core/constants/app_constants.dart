@@ -47,4 +47,5 @@ class AppRoutes {
   static const String forgotPassword = '/forgot-password';
   static const String profile = '/profile';
   static const String guest = '/guest';
+  static const String singleDevice = '/single-device';
 }

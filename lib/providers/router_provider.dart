@@ -17,6 +17,7 @@ import '../presentation/screens/auth/splash_screen.dart';
 import '../presentation/screens/auth/forgot_password_screen.dart';
 import '../presentation/screens/profile/profile_screen.dart';
 import '../presentation/screens/auth/guest_screen.dart';
+import '../presentation/screens/game/single_device_screen.dart';
 import 'game_providers.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
@@ -28,7 +29,9 @@ final routerProvider = Provider<GoRouter>((ref) {
       final isLoggedIn = authState.value != null;
       final isAuthRoute = state.matchedLocation == AppRoutes.login ||
           state.matchedLocation == AppRoutes.register ||
-          state.matchedLocation == AppRoutes.splash;
+          state.matchedLocation == AppRoutes.splash ||
+          state.matchedLocation == AppRoutes.guest ||
+          state.matchedLocation == AppRoutes.singleDevice;
 
       if (!isLoggedIn && !isAuthRoute) return AppRoutes.login;
       if (isLoggedIn && state.matchedLocation == AppRoutes.login) {
@@ -48,6 +51,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: AppRoutes.guest,
         builder: (_, __) => const GuestScreen(),
+      ),
+      GoRoute(
+        path: AppRoutes.singleDevice,
+        builder: (_, __) => const SingleDeviceScreen(),
       ),
       GoRoute(
         path: AppRoutes.profile,
