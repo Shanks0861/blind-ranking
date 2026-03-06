@@ -59,7 +59,7 @@ class _JoinLobbyScreenState extends ConsumerState<JoinLobbyScreen> {
 
       if (mounted) context.go('/lobby/${lobby.lobbyId}');
     } catch (e) {
-      setState(() => _error = 'Beitritt fehlgeschlagen. Prüfe den Code.');
+      setState(() => _error = 'Fehler: ${e.toString()}');
     } finally {
       if (mounted) setState(() => _loading = false);
     }
