@@ -38,6 +38,8 @@ class _GameScreenState extends ConsumerState<GameScreen> {
         switch (state.lobby.phase) {
           case AppConstants.phaseSetup:
             context.go('/lobby/$lobbyId');
+          case AppConstants.phaseHunterRevenge:
+            context.go('/hunter/$lobbyId');
           case AppConstants.phaseVoting:
             context.go('/voting/$lobbyId');
           case AppConstants.phaseGameOver:

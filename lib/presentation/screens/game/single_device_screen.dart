@@ -70,6 +70,7 @@ enum _SDPhase {
   discussion,
   votingIntro,
   voting,
+  hunterRevenge,
   result
 }
 
@@ -184,7 +185,34 @@ class _SingleDeviceScreenState extends State<SingleDeviceScreen> {
     eliminated.alive = false;
     _eliminatedName = eliminated.name;
 
+    // If Hunter was eliminated — trigger revenge before result
+    if (eliminated.role == AppConstants.roleHunter) {
+      setState(() => _phase = _SDPhase.hunterRevenge);
+      return;
+    }
+
     // Check win condition
+    final alivePlayers = _players.where((p) => p.alive).toList();
+    final aliveMafia = alivePlayers
+        .where((p) => p.faction == AppConstants.factionMafia)
+        .length;
+    final aliveCitizen = alivePlayers
+        .where((p) => p.faction == AppConstants.factionCitizen)
+        .length;
+
+    String? winner;
+    if (aliveMafia == 0) winner = 'citizen';
+    if (aliveMafia >= aliveCitizen) winner = 'mafia';
+
+    setState(() {
+      _winner = winner;
+      _phase = _SDPhase.result;
+    });
+  }
+
+  void _hunterRevengeComplete(String targetName) {
+    _players.firstWhere((p) => p.name == targetName).alive = false;
+
     final alivePlayers = _players.where((p) => p.alive).toList();
     final aliveMafia = alivePlayers
         .where((p) => p.faction == AppConstants.factionMafia)
@@ -237,6 +265,7 @@ class _SingleDeviceScreenState extends State<SingleDeviceScreen> {
           onComplete: () => setState(() => _phase = _SDPhase.voting),
         ),
       _SDPhase.voting => _buildVoting(),
+      _SDPhase.hunterRevenge => _buildHunterRevenge(),
       _SDPhase.result => _buildResult(),
     };
   }
@@ -597,6 +626,141 @@ class _SingleDeviceScreenState extends State<SingleDeviceScreen> {
     );
   }
 
+  // ─── HUNTER REVENGE ──────────────────────────────────────────────────────
+
+  Widget _buildHunterRevenge() {
+    final hunterName = _eliminatedName ?? '';
+    final targets =
+        _players.where((p) => p.alive && p.name != hunterName).toList();
+    String? selected;
+
+    return StatefulBuilder(
+      builder: (context, setInner) => GestureDetector(
+        onTap: () {}, // prevent accidental dismiss
+        child: Scaffold(
+          body: Stack(
+            children: [
+              Container(
+                decoration: BoxDecoration(
+                  gradient: RadialGradient(
+                    center: const Alignment(0, -0.2),
+                    radius: 1.5,
+                    colors: [
+                      AppColors.hunterLight.withOpacity(0.13),
+                      AppColors.background,
+                    ],
+                  ),
+                ),
+              ),
+              SafeArea(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    children: [
+                      const Text('🏹', style: TextStyle(fontSize: 56))
+                          .animate()
+                          .fadeIn()
+                          .scale(begin: const Offset(0.4, 0.4)),
+                      const SizedBox(height: 16),
+                      Text('DER JÄGER FÄLLT — DOCH NICHT ALLEIN',
+                              style: TextStyle(
+                                fontFamily: 'Cinzel',
+                                fontSize: 11,
+                                letterSpacing: 3,
+                                color: AppColors.hunterLight.withOpacity(0.7),
+                              ),
+                              textAlign: TextAlign.center)
+                          .animate()
+                          .fadeIn(delay: 200.ms),
+                      const SizedBox(height: 10),
+                      Text(hunterName,
+                          style: const TextStyle(
+                            fontFamily: 'Cinzel',
+                            fontSize: 26,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.hunterLight,
+                          )).animate().fadeIn(delay: 400.ms),
+                      const SizedBox(height: 6),
+                      Text('Gib das Gerät an $hunterName.\nWen nimmst du mit?',
+                              style: const TextStyle(
+                                  color: AppColors.textSecondary,
+                                  fontSize: 14,
+                                  height: 1.6),
+                              textAlign: TextAlign.center)
+                          .animate()
+                          .fadeIn(delay: 600.ms),
+                      const OrnamentDivider(),
+                      Expanded(
+                        child: ListView.separated(
+                          itemCount: targets.length,
+                          separatorBuilder: (_, __) =>
+                              const SizedBox(height: 10),
+                          itemBuilder: (_, i) {
+                            final t = targets[i];
+                            final isSelected = selected == t.name;
+                            return GestureDetector(
+                              onTap: () => setInner(() => selected = t.name),
+                              child: AnimatedContainer(
+                                duration: const Duration(milliseconds: 200),
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 20, vertical: 16),
+                                decoration: BoxDecoration(
+                                  color: isSelected
+                                      ? AppColors.hunterLight.withOpacity(0.1)
+                                      : AppColors.card,
+                                  borderRadius: BorderRadius.circular(10),
+                                  border: Border.all(
+                                    color: isSelected
+                                        ? AppColors.hunterLight
+                                        : AppColors.border,
+                                    width: isSelected ? 2 : 1,
+                                  ),
+                                ),
+                                child: Row(
+                                  children: [
+                                    Text(isSelected ? '🎯' : '👤',
+                                        style: const TextStyle(fontSize: 20)),
+                                    const SizedBox(width: 16),
+                                    Text(t.name,
+                                        style: TextStyle(
+                                          fontFamily: 'Cinzel',
+                                          fontSize: 18,
+                                          color: isSelected
+                                              ? AppColors.hunterLight
+                                              : AppColors.textPrimary,
+                                        )),
+                                  ],
+                                ),
+                              ),
+                            )
+                                .animate()
+                                .fadeIn(delay: (600 + i * 60).ms)
+                                .slideX(begin: 0.1);
+                          },
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      MafiaButton(
+                        label: selected == null
+                            ? 'Wähle dein Opfer'
+                            : 'Jetzt eliminieren 🏹',
+                        isDestructive: true,
+                        onPressed: selected != null
+                            ? () => _hunterRevengeComplete(selected!)
+                            : null,
+                      ),
+                      const SizedBox(height: 16),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   // ─── RESULT ──────────────────────────────────────────────────────────────
 
   Widget _buildResult() {
@@ -718,14 +882,60 @@ class _SingleDeviceScreenState extends State<SingleDeviceScreen> {
 
                       const SizedBox(height: 24),
 
-                      MafiaButton(
-                        label: 'Nochmal spielen',
-                        isDestructive: false,
-                        onPressed: () => setState(() {
-                          _phase = _SDPhase.setup;
-                          for (final c in _nameControllers) c.clear();
-                        }),
-                      ),
+                      // Restart options — same as multi device
+                      Container(
+                        padding: const EdgeInsets.all(20),
+                        decoration: BoxDecoration(
+                          color: AppColors.card,
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: AppColors.border),
+                        ),
+                        child: Column(
+                          children: [
+                            Text('NEUES SPIEL',
+                                style: Theme.of(context).textTheme.labelMedium),
+                            const SizedBox(height: 16),
+                            // Same players — just re-distribute roles
+                            MafiaButton(
+                              label: 'Gleiche Spieler',
+                              isDestructive: true,
+                              onPressed: () {
+                                final names =
+                                    _players.map((p) => p.name).toList();
+                                setState(() {
+                                  for (int i = 0;
+                                      i < _nameControllers.length;
+                                      i++) {
+                                    if (i < names.length) {
+                                      _nameControllers[i].text = names[i];
+                                    }
+                                  }
+                                  _phase = _SDPhase.roleRevealIntro;
+                                  _players = _distributeRoles(
+                                    names,
+                                    _mafiaCount,
+                                    _hunterCount,
+                                  );
+                                  _currentRevealIndex = 0;
+                                  _winner = null;
+                                  _eliminatedName = null;
+                                });
+                              },
+                            ),
+                            const SizedBox(height: 10),
+                            // New players — go back to setup
+                            MafiaButton(
+                              label: 'Spieler ändern',
+                              isOutlined: true,
+                              onPressed: () => setState(() {
+                                _phase = _SDPhase.setup;
+                                _winner = null;
+                                _eliminatedName = null;
+                              }),
+                            ),
+                          ],
+                        ),
+                      ).animate().fadeIn(delay: 1200.ms),
                     ] else ...[
                       Text(
                         'Das Spiel geht weiter...',

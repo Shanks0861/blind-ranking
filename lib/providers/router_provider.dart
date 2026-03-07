@@ -18,6 +18,7 @@ import '../presentation/screens/auth/forgot_password_screen.dart';
 import '../presentation/screens/profile/profile_screen.dart';
 import '../presentation/screens/auth/guest_screen.dart';
 import '../presentation/screens/game/single_device_screen.dart';
+import '../presentation/screens/game/hunter_revenge_screen.dart';
 import 'game_providers.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
@@ -51,6 +52,12 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: AppRoutes.guest,
         builder: (_, __) => const GuestScreen(),
+      ),
+      GoRoute(
+        path: '/hunter/:lobbyId',
+        builder: (_, state) => HunterRevengeScreen(
+          lobbyId: state.pathParameters['lobbyId']!,
+        ),
       ),
       GoRoute(
         path: AppRoutes.singleDevice,

@@ -55,6 +55,8 @@ class _VotingScreenState extends ConsumerState<VotingScreen> {
         switch (state.lobby.phase) {
           case AppConstants.phaseSetup:
             context.go('/lobby/${widget.lobbyId}');
+          case AppConstants.phaseHunterRevenge:
+            context.go('/hunter/${widget.lobbyId}');
           case AppConstants.phaseEvaluation:
           case AppConstants.phaseDiscussion:
             context.go('/game/${widget.lobbyId}');

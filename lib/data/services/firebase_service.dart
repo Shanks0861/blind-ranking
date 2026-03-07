@@ -106,7 +106,7 @@ class LobbyService {
     );
     await _db
         .collection(AppConstants.colLobbies)
-        .doc(lobbyId)
+        .doc(lobbyId.toUpperCase())
         .set(lobby.toFirestore());
     return lobby;
   }
@@ -146,7 +146,7 @@ class LobbyService {
   Stream<List<PlayerModel>> watchPlayers(String lobbyId) {
     return _db
         .collection(AppConstants.colLobbies)
-        .doc(lobbyId)
+        .doc(lobbyId.toUpperCase())
         .collection(AppConstants.colPlayers)
         .snapshots()
         .map((snap) =>
@@ -156,7 +156,7 @@ class LobbyService {
   Stream<List<VoteModel>> watchVotes(String lobbyId) {
     return _db
         .collection(AppConstants.colLobbies)
-        .doc(lobbyId)
+        .doc(lobbyId.toUpperCase())
         .collection(AppConstants.colVotes)
         .snapshots()
         .map((snap) =>
@@ -169,7 +169,7 @@ class LobbyService {
   }) async {
     final playerRef = _db
         .collection(AppConstants.colLobbies)
-        .doc(lobbyId)
+        .doc(lobbyId.toUpperCase())
         .collection(AppConstants.colPlayers)
         .doc(user.uid);
 
@@ -184,14 +184,17 @@ class LobbyService {
   Future<void> leaveLobby(String lobbyId, String userId) async {
     await _db
         .collection(AppConstants.colLobbies)
-        .doc(lobbyId)
+        .doc(lobbyId.toUpperCase())
         .collection(AppConstants.colPlayers)
         .doc(userId)
         .delete();
   }
 
   Future<void> updateSettings(String lobbyId, GameSettings settings) async {
-    await _db.collection(AppConstants.colLobbies).doc(lobbyId).update({
+    await _db
+        .collection(AppConstants.colLobbies)
+        .doc(lobbyId.toUpperCase())
+        .update({
       'settings': settings.toMap(),
     });
   }
@@ -199,12 +202,14 @@ class LobbyService {
   Future<void> distributeRoles(String lobbyId) async {
     final playersSnap = await _db
         .collection(AppConstants.colLobbies)
-        .doc(lobbyId)
+        .doc(lobbyId.toUpperCase())
         .collection(AppConstants.colPlayers)
         .get();
 
-    final lobbyDoc =
-        await _db.collection(AppConstants.colLobbies).doc(lobbyId).get();
+    final lobbyDoc = await _db
+        .collection(AppConstants.colLobbies)
+        .doc(lobbyId.toUpperCase())
+        .get();
     final lobby = LobbyModel.fromFirestore(lobbyDoc);
     final settings = lobby.settings;
 
@@ -236,14 +241,18 @@ class LobbyService {
       batch.update(playerDocs[i].reference, roles[i]);
     }
 
-    batch.update(_db.collection(AppConstants.colLobbies).doc(lobbyId),
+    batch.update(
+        _db.collection(AppConstants.colLobbies).doc(lobbyId.toUpperCase()),
         {'phase': AppConstants.phaseRoleReveal, 'isOpen': false});
 
     await batch.commit();
   }
 
   Future<void> startDiscussion(String lobbyId) async {
-    await _db.collection(AppConstants.colLobbies).doc(lobbyId).update({
+    await _db
+        .collection(AppConstants.colLobbies)
+        .doc(lobbyId.toUpperCase())
+        .update({
       'phase': AppConstants.phaseDiscussion,
     });
   }
@@ -251,7 +260,10 @@ class LobbyService {
   Future<void> startVoting(String lobbyId, int durationSeconds) async {
     final endsAt =
         DateTime.now().millisecondsSinceEpoch + (durationSeconds * 1000);
-    await _db.collection(AppConstants.colLobbies).doc(lobbyId).update({
+    await _db
+        .collection(AppConstants.colLobbies)
+        .doc(lobbyId.toUpperCase())
+        .update({
       'phase': AppConstants.phaseVoting,
       'votingEndsAt': endsAt,
     });
@@ -264,7 +276,7 @@ class LobbyService {
   }) async {
     await _db
         .collection(AppConstants.colLobbies)
-        .doc(lobbyId)
+        .doc(lobbyId.toUpperCase())
         .collection(AppConstants.colVotes)
         .doc(voterId)
         .set(VoteModel(
@@ -277,7 +289,7 @@ class LobbyService {
   Future<void> evaluateVotes(String lobbyId) async {
     final votesSnap = await _db
         .collection(AppConstants.colLobbies)
-        .doc(lobbyId)
+        .doc(lobbyId.toUpperCase())
         .collection(AppConstants.colVotes)
         .get();
 
@@ -292,7 +304,8 @@ class LobbyService {
     }
 
     final batch = _db.batch();
-    final lobbyRef = _db.collection(AppConstants.colLobbies).doc(lobbyId);
+    final lobbyRef =
+        _db.collection(AppConstants.colLobbies).doc(lobbyId.toUpperCase());
 
     if (counts.isNotEmpty) {
       final maxVotes = counts.values.reduce((a, b) => a > b ? a : b);
@@ -303,10 +316,26 @@ class LobbyService {
         final eliminatedId = topPlayers.first.key;
         final playerRef = _db
             .collection(AppConstants.colLobbies)
-            .doc(lobbyId)
+            .doc(lobbyId.toUpperCase())
             .collection(AppConstants.colPlayers)
             .doc(eliminatedId);
         batch.update(playerRef, {'alive': false});
+
+        // Check if eliminated player is the Hunter
+        final eliminatedDoc = await playerRef.get();
+        final eliminatedRole = eliminatedDoc.data()?['role'] ?? '';
+        if (eliminatedRole == AppConstants.roleHunter) {
+          // Hunter was eliminated — trigger revenge phase
+          for (final doc in votesSnap.docs) {
+            batch.delete(doc.reference);
+          }
+          batch.update(lobbyRef, {
+            'phase': AppConstants.phaseHunterRevenge,
+            'hunterTargetId': eliminatedId,
+          });
+          await batch.commit();
+          return;
+        }
       }
     }
 
@@ -318,10 +347,26 @@ class LobbyService {
     await batch.commit();
   }
 
+  Future<void> hunterRevenge(String lobbyId, String targetId) async {
+    final lobbyRef =
+        _db.collection(AppConstants.colLobbies).doc(lobbyId.toUpperCase());
+    final playerRef = _db
+        .collection(AppConstants.colLobbies)
+        .doc(lobbyId.toUpperCase())
+        .collection(AppConstants.colPlayers)
+        .doc(targetId);
+
+    final batch = _db.batch();
+    batch.update(playerRef, {'alive': false});
+    batch.update(lobbyRef,
+        {'phase': AppConstants.phaseEvaluation, 'hunterTargetId': null});
+    await batch.commit();
+  }
+
   Future<void> checkWinCondition(String lobbyId) async {
     final playersSnap = await _db
         .collection(AppConstants.colLobbies)
-        .doc(lobbyId)
+        .doc(lobbyId.toUpperCase())
         .collection(AppConstants.colPlayers)
         .get();
 
@@ -333,7 +378,8 @@ class LobbyService {
     final aliveCitizens =
         alive.where((p) => p.faction == AppConstants.factionCitizen).toList();
 
-    final lobbyRef = _db.collection(AppConstants.colLobbies).doc(lobbyId);
+    final lobbyRef =
+        _db.collection(AppConstants.colLobbies).doc(lobbyId.toUpperCase());
 
     if (aliveMafia.isEmpty) {
       await lobbyRef.update({
@@ -353,7 +399,7 @@ class LobbyService {
   Future<void> resetGame(String lobbyId) async {
     final votesSnap = await _db
         .collection(AppConstants.colLobbies)
-        .doc(lobbyId)
+        .doc(lobbyId.toUpperCase())
         .collection(AppConstants.colVotes)
         .get();
 
@@ -364,7 +410,7 @@ class LobbyService {
 
     final playersSnap = await _db
         .collection(AppConstants.colLobbies)
-        .doc(lobbyId)
+        .doc(lobbyId.toUpperCase())
         .collection(AppConstants.colPlayers)
         .get();
     for (final doc in playersSnap.docs) {
@@ -376,7 +422,8 @@ class LobbyService {
       });
     }
 
-    batch.update(_db.collection(AppConstants.colLobbies).doc(lobbyId), {
+    batch.update(
+        _db.collection(AppConstants.colLobbies).doc(lobbyId.toUpperCase()), {
       'phase': AppConstants.phaseSetup,
       'winnerId': null,
       'isOpen': true,
@@ -389,7 +436,7 @@ class LobbyService {
   Future<void> removePlayer(String lobbyId, String playerId) async {
     await _db
         .collection(AppConstants.colLobbies)
-        .doc(lobbyId)
+        .doc(lobbyId.toUpperCase())
         .collection(AppConstants.colPlayers)
         .doc(playerId)
         .delete();

@@ -6,6 +6,7 @@ class AppConstants {
   static const String phaseVoting = 'voting';
   static const String phaseEvaluation = 'evaluation';
   static const String phaseGameOver = 'game_over';
+  static const String phaseHunterRevenge = 'hunter_revenge';
 
   // Roles
   static const String roleMafia = 'mafia';
@@ -21,6 +22,7 @@ class AppConstants {
   static const String colLobbies = 'lobbies';
   static const String colPlayers = 'players';
   static const String colVotes = 'votes';
+  static const String hunterTargetId = 'hunterTargetId';
 
   // Game defaults
   static const int defaultVotingDuration = 60; // seconds

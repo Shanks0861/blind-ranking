@@ -102,6 +102,7 @@ class LobbyModel extends Equatable {
   final DateTime createdAt;
   final String? winnerId; // 'mafia' | 'citizen' | null
   final bool isOpen;
+  final String? hunterTargetId;
   final int? votingEndsAt; // Unix timestamp ms
 
   const LobbyModel({
@@ -112,6 +113,7 @@ class LobbyModel extends Equatable {
     required this.createdAt,
     this.winnerId,
     this.isOpen = true,
+    this.hunterTargetId,
     this.votingEndsAt,
   });
 
@@ -125,6 +127,7 @@ class LobbyModel extends Equatable {
       createdAt: (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
       winnerId: data['winnerId'],
       isOpen: data['isOpen'] ?? true,
+      hunterTargetId: data['hunterTargetId'] as String?,
       votingEndsAt: data['votingEndsAt'],
     );
   }
@@ -136,6 +139,7 @@ class LobbyModel extends Equatable {
         'createdAt': Timestamp.fromDate(createdAt),
         'winnerId': winnerId,
         'isOpen': isOpen,
+        'hunterTargetId': hunterTargetId,
         'votingEndsAt': votingEndsAt,
       };
 
@@ -143,6 +147,7 @@ class LobbyModel extends Equatable {
     String? phase,
     String? winnerId,
     bool? isOpen,
+    String? hunterTargetId,
     int? votingEndsAt,
     GameSettings? settings,
   }) =>
@@ -154,6 +159,7 @@ class LobbyModel extends Equatable {
         createdAt: createdAt,
         winnerId: winnerId ?? this.winnerId,
         isOpen: isOpen ?? this.isOpen,
+        hunterTargetId: hunterTargetId ?? this.hunterTargetId,
         votingEndsAt: votingEndsAt ?? this.votingEndsAt,
       );
 
