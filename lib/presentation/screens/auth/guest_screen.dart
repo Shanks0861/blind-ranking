@@ -17,14 +17,12 @@ class GuestScreen extends ConsumerStatefulWidget {
 
 class _GuestScreenState extends ConsumerState<GuestScreen> {
   final _nameCtrl = TextEditingController();
-  final _codeCtrl = TextEditingController();
   bool _loading = false;
   String? _error;
 
   @override
   void dispose() {
     _nameCtrl.dispose();
-    _codeCtrl.dispose();
     super.dispose();
   }
 
@@ -33,40 +31,17 @@ class _GuestScreenState extends ConsumerState<GuestScreen> {
       setState(() => _error = 'Bitte gib einen Namen ein.');
       return;
     }
-    if (_codeCtrl.text.trim().length != 6) {
-      setState(() => _error = 'Der Lobby-Code muss 6 Zeichen lang sein.');
-      return;
-    }
     setState(() {
       _loading = true;
       _error = null;
     });
     try {
-      // Sign in anonymously
       final authService = ref.read(authServiceProvider);
       final user = await authService.signInAnonymously(_nameCtrl.text.trim());
-      if (user == null) throw Exception('Anmeldung fehlgeschlagen');
-
-      // Join lobby
-      final code = _codeCtrl.text.trim().toUpperCase();
-      final lobby = await ref.read(lobbyServiceProvider).getLobbyByCode(code);
-      if (lobby == null) throw Exception('Lobby nicht gefunden');
-
-      await ref.read(lobbyServiceProvider).joinLobby(
-            lobbyId: lobby.lobbyId,
-            user: user,
-          );
-
-      if (mounted) context.go('/lobby/${lobby.lobbyId}');
+      if (user == null) throw Exception('Anonyme Anmeldung fehlgeschlagen');
+      if (mounted) context.go(AppRoutes.home);
     } catch (e) {
-      String msg = e.toString();
-      if (msg.contains('nicht gefunden')) {
-        setState(() => _error = 'Lobby nicht gefunden. Prüfe den Code.');
-      } else if (msg.contains('full') || msg.contains('voll')) {
-        setState(() => _error = 'Diese Lobby ist voll.');
-      } else {
-        setState(() => _error = 'Fehler beim Beitreten. Versuche es erneut.');
-      }
+      setState(() => _error = e.toString().replaceAll('Exception: ', ''));
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -126,7 +101,7 @@ class _GuestScreenState extends ConsumerState<GuestScreen> {
                           const SizedBox(height: 8),
 
                           Text(
-                            'Kein Konto nötig — gib einen Namen\nund den Lobby-Code ein.',
+                            'Kein Konto nötig — gib einfach deinen Namen ein.',
                             style: Theme.of(context).textTheme.bodySmall,
                             textAlign: TextAlign.center,
                           ).animate().fadeIn(delay: 300.ms),
@@ -147,30 +122,6 @@ class _GuestScreenState extends ConsumerState<GuestScreen> {
                                   TextStyle(color: AppColors.textMuted),
                             ),
                           ).animate().fadeIn(delay: 400.ms).slideY(begin: 0.2),
-
-                          const SizedBox(height: 16),
-
-                          // Code field
-                          TextField(
-                            controller: _codeCtrl,
-                            style: const TextStyle(
-                              color: AppColors.textPrimary,
-                              fontSize: 24,
-                              letterSpacing: 8,
-                              fontFamily: 'Cinzel',
-                            ),
-                            maxLength: 6,
-                            textCapitalization: TextCapitalization.characters,
-                            textAlign: TextAlign.center,
-                            decoration: const InputDecoration(
-                              labelText: 'LOBBY-CODE',
-                              prefixIcon: Icon(Icons.tag,
-                                  color: AppColors.textMuted, size: 20),
-                              counterStyle:
-                                  TextStyle(color: AppColors.textMuted),
-                            ),
-                            onSubmitted: (_) => _joinAsGuest(),
-                          ).animate().fadeIn(delay: 500.ms).slideY(begin: 0.2),
 
                           if (_error != null) ...[
                             const SizedBox(height: 12),
@@ -201,11 +152,11 @@ class _GuestScreenState extends ConsumerState<GuestScreen> {
                           const SizedBox(height: 24),
 
                           MafiaButton(
-                            label: 'Lobby beitreten',
+                            label: 'Als Gast spielen',
                             isDestructive: true,
                             isLoading: _loading,
                             onPressed: _joinAsGuest,
-                          ).animate().fadeIn(delay: 600.ms),
+                          ).animate().fadeIn(delay: 500.ms),
 
                           const SizedBox(height: 24),
 
