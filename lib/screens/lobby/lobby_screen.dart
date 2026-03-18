@@ -38,6 +38,7 @@ class _LobbyScreenState extends State<LobbyScreen> {
   final _categoryService = CategoryService();
   final _gameService = GameService();
   bool _starting = false;
+  bool _navigating = false;
 
   bool get isHost => _lobby.hostId == widget.currentUser.id;
 
@@ -56,23 +57,17 @@ class _LobbyScreenState extends State<LobbyScreen> {
 
   Future<void> _onCategorySelected(Category? cat) async {
     if (cat == null) return;
-
-    // Lokalen State sofort updaten
     setState(() {
       _selectedCategory = cat;
       _selectedSubCategory = null;
       _subCategories = [];
       _lobby = _lobby.copyWith(categoryId: cat.id, subCategoryId: null);
     });
-
-    // Supabase updaten
     await widget.lobbyService.updateLobbySettings(
       lobbyId: _lobby.id,
       categoryId: cat.id,
       subCategoryId: null,
     );
-
-    // Unterkategorien laden
     final subs = await _categoryService.fetchSubCategories(cat.id);
     setState(() => _subCategories = subs);
   }
@@ -84,7 +79,7 @@ class _LobbyScreenState extends State<LobbyScreen> {
     });
     await widget.lobbyService.updateLobbySettings(
       lobbyId: _lobby.id,
-      subCategoryId: sub?.id ?? '',
+      subCategoryId: sub?.id,
     );
   }
 
@@ -110,57 +105,54 @@ class _LobbyScreenState extends State<LobbyScreen> {
       );
       return;
     }
-
     setState(() => _starting = true);
-
     try {
       final items = await _categoryService.fetchItems(
         categoryId: _selectedCategory!.id,
         subCategoryId: _selectedSubCategory?.id,
       );
-
       if (items.length < 5) {
         if (mounted)
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-                content: Text('Zu wenige Items in dieser Kategorie (mind. 5)')),
+            const SnackBar(content: Text('Zu wenige Items (mind. 5)')),
           );
         return;
       }
-
       await widget.lobbyService.updateLobbyStatus(
         lobbyId: _lobby.id,
         status: LobbyStatus.playing,
       );
-
       final session = await _gameService.startSession(
         lobbyId: _lobby.id,
         allItemIds: items.map((e) => e.id).toList(),
         listSize: _selectedListSize,
       );
-
-      if (mounted) {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-            builder: (_) => GameScreen(
-              session: session,
-              lobby: _lobby,
-              currentUser: widget.currentUser,
-              gameService: _gameService,
-              categoryService: _categoryService,
-            ),
-          ),
-        );
-      }
+      if (mounted) _navigateToGame(session);
     } catch (e) {
       if (mounted)
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Fehler: ${e.toString()}')),
+          SnackBar(content: Text('Fehler: $e')),
         );
     } finally {
       if (mounted) setState(() => _starting = false);
     }
+  }
+
+  void _navigateToGame(dynamic session) {
+    if (_navigating) return;
+    _navigating = true;
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(
+        builder: (_) => GameScreen(
+          session: session,
+          lobby: _lobby,
+          currentUser: widget.currentUser,
+          gameService: _gameService,
+          categoryService: _categoryService,
+        ),
+      ),
+    );
   }
 
   @override
@@ -172,88 +164,112 @@ class _LobbyScreenState extends State<LobbyScreen> {
       ),
       body: StreamBuilder<List<LobbyPlayer>>(
         stream: widget.lobbyService.watchPlayers(_lobby.id),
-        builder: (context, snapshot) {
-          _players = snapshot.data ?? [];
-          return SingleChildScrollView(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _buildCodeCard(),
-                const SizedBox(height: 20),
-                const Text('Spieler',
-                    style: TextStyle(
-                      color: AppColors.textPrimary,
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                    )),
-                const SizedBox(height: 10),
-                ..._players.map((p) => _buildPlayerTile(p)),
-                const SizedBox(height: 20),
-                if (isHost) ...[
-                  _buildSettings(),
-                  const SizedBox(height: 20),
-                  // Aktuell gewählte Kategorie anzeigen
-                  if (_selectedCategory != null)
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 14, vertical: 10),
-                      margin: const EdgeInsets.only(bottom: 12),
-                      decoration: BoxDecoration(
-                        color: AppColors.primary.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(
-                            color: AppColors.primary.withOpacity(0.3)),
-                      ),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.check_circle,
-                              color: AppColors.primary, size: 18),
-                          const SizedBox(width: 8),
-                          Text(
-                            _selectedSubCategory != null
-                                ? '${_selectedCategory!.name} › ${_selectedSubCategory!.name}'
-                                : '${_selectedCategory!.name} › Alle',
-                            style: const TextStyle(
-                                color: AppColors.primary,
-                                fontWeight: FontWeight.w600),
-                          ),
-                        ],
-                      ),
-                    ),
-                  SizedBox(
-                    width: double.infinity,
-                    height: 52,
-                    child: ElevatedButton.icon(
-                      onPressed: _starting ? null : _startGame,
-                      icon: _starting
-                          ? const SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(
-                                  strokeWidth: 2, color: Colors.white))
-                          : const Icon(Icons.play_arrow),
-                      label: Text(_starting ? 'Startet...' : 'Spiel starten'),
-                    ),
-                  ),
-                  if (_players.length < 2)
-                    const Padding(
-                      padding: EdgeInsets.only(top: 8),
-                      child: Text(
-                        'Tipp: Du kannst auch alleine testen',
+        builder: (context, playersSnap) {
+          _players = playersSnap.data ?? [];
+
+          return StreamBuilder<Map<String, dynamic>?>(
+            stream: widget.lobbyService.watchLobby(_lobby.id),
+            builder: (context, lobbySnap) {
+              // Non-Host: Wenn Lobby auf "playing" springt → Game laden und navigieren
+              if (!isHost && lobbySnap.hasData && lobbySnap.data != null) {
+                final lobbyData = lobbySnap.data!;
+                if (lobbyData['status'] == 'playing' && !_navigating) {
+                  WidgetsBinding.instance.addPostFrameCallback((_) async {
+                    if (!mounted || _navigating) return;
+                    final session =
+                        await _gameService.fetchActiveSession(_lobby.id);
+                    if (session != null && mounted) {
+                      _navigateToGame(session);
+                    }
+                  });
+                }
+              }
+
+              return SingleChildScrollView(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildCodeCard(),
+                    const SizedBox(height: 20),
+                    const Text('Spieler',
                         style: TextStyle(
-                            color: AppColors.textSecondary, fontSize: 12),
-                        textAlign: TextAlign.center,
+                            color: AppColors.textPrimary,
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 10),
+                    ..._players.map(_buildPlayerTile),
+                    const SizedBox(height: 20),
+                    if (isHost) ...[
+                      _buildSettings(),
+                      const SizedBox(height: 16),
+                      if (_selectedCategory != null)
+                        Container(
+                          width: double.infinity,
+                          margin: const EdgeInsets.only(bottom: 12),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 14, vertical: 10),
+                          decoration: BoxDecoration(
+                            color: AppColors.primary.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                                color: AppColors.primary.withOpacity(0.3)),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.check_circle,
+                                  color: AppColors.primary, size: 18),
+                              const SizedBox(width: 8),
+                              Text(
+                                _selectedSubCategory != null
+                                    ? '${_selectedCategory!.name} › ${_selectedSubCategory!.name}'
+                                    : '${_selectedCategory!.name} › Alle',
+                                style: const TextStyle(
+                                    color: AppColors.primary,
+                                    fontWeight: FontWeight.w600),
+                              ),
+                            ],
+                          ),
+                        ),
+                      SizedBox(
+                        width: double.infinity,
+                        height: 52,
+                        child: ElevatedButton.icon(
+                          onPressed: _starting ? null : _startGame,
+                          icon: _starting
+                              ? const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                      strokeWidth: 2, color: Colors.white))
+                              : const Icon(Icons.play_arrow),
+                          label:
+                              Text(_starting ? 'Startet...' : 'Spiel starten'),
+                        ),
                       ),
-                    ),
-                ] else
-                  const Center(
-                    child: Text('Warte auf den Host…',
-                        style: TextStyle(color: AppColors.textSecondary)),
-                  ),
-              ],
-            ),
+                    ] else
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(20),
+                        decoration: BoxDecoration(
+                          color: AppColors.surfaceVariant,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: AppColors.border),
+                        ),
+                        child: const Column(
+                          children: [
+                            CircularProgressIndicator(),
+                            SizedBox(height: 14),
+                            Text('Warte auf den Host…',
+                                style:
+                                    TextStyle(color: AppColors.textSecondary)),
+                          ],
+                        ),
+                      ),
+                  ],
+                ),
+              );
+            },
           );
         },
       ),
@@ -286,7 +302,6 @@ class _LobbyScreenState extends State<LobbyScreen> {
                   letterSpacing: 8,
                 ),
               ),
-              const SizedBox(width: 12),
               IconButton(
                 icon: const Icon(Icons.copy, color: AppColors.textSecondary),
                 onPressed: () {
@@ -349,17 +364,14 @@ class _LobbyScreenState extends State<LobbyScreen> {
           children: [
             const Text('Spieleinstellungen',
                 style: TextStyle(
-                  color: AppColors.textPrimary,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 16,
-                )),
+                    color: AppColors.textPrimary,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16)),
             const SizedBox(height: 16),
-
-            // Kategorie
             DropdownButtonFormField<Category>(
               decoration: const InputDecoration(labelText: 'Kategorie wählen'),
               value: _selectedCategory,
-              hint: const Text('Kategorie wählen...',
+              hint: const Text('Kategorie wählen…',
                   style: TextStyle(color: AppColors.textSecondary)),
               items: _categories
                   .map((c) => DropdownMenuItem(
@@ -373,8 +385,6 @@ class _LobbyScreenState extends State<LobbyScreen> {
               dropdownColor: AppColors.surface,
               style: const TextStyle(color: AppColors.textPrimary),
             ),
-
-            // Unterkategorie — nur wenn geladen
             if (_subCategories.isNotEmpty) ...[
               const SizedBox(height: 12),
               DropdownButtonFormField<SubCategory?>(
@@ -399,10 +409,7 @@ class _LobbyScreenState extends State<LobbyScreen> {
                 style: const TextStyle(color: AppColors.textPrimary),
               ),
             ],
-
             const SizedBox(height: 12),
-
-            // Listengröße
             DropdownButtonFormField<ListSize>(
               decoration: const InputDecoration(labelText: 'Listen Größe'),
               value: _selectedListSize,
