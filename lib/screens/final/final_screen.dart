@@ -8,6 +8,7 @@ import '../../services/category_service.dart';
 import '../../services/lobby_service.dart';
 import '../../utils/app_theme.dart';
 import '../game/game_screen.dart';
+import '../../widgets/character_image.dart';
 import '../lobby/lobby_screen.dart';
 
 class FinalScreen extends StatefulWidget {
@@ -245,7 +246,7 @@ class _FinalScreenState extends State<FinalScreen>
                         fontSize: 20)),
               ),
               const SizedBox(width: 14),
-              _netImage(item.imageUrl, size: 52),
+              _netImage(item.imageUrl, size: 52, name: item.name),
               const SizedBox(width: 14),
               Expanded(
                 child: Text(item.name,
@@ -458,7 +459,8 @@ class _FinalScreenState extends State<FinalScreen>
                   ),
                   child: Row(
                     children: [
-                      _netImage(item?.imageUrl, size: 28),
+                      _netImage(item?.imageUrl,
+                          size: 28, name: item?.name ?? ''),
                       const SizedBox(width: 6),
                       Expanded(
                         child: Column(
@@ -600,33 +602,11 @@ class _FinalScreenState extends State<FinalScreen>
     );
   }
 
-  Widget _netImage(String? url, {required double size}) {
-    if (url == null) {
-      return Container(
-        width: size,
-        height: size,
-        decoration: BoxDecoration(
-            color: AppColors.surfaceVariant,
-            borderRadius: BorderRadius.circular(6)),
-        child: Icon(Icons.image_outlined,
-            color: AppColors.textSecondary, size: size * 0.5),
-      );
-    }
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(6),
-      child: Image.network(
-        url,
-        width: size,
-        height: size,
-        fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => Container(
-          width: size,
-          height: size,
-          color: AppColors.surfaceVariant,
-          child: Icon(Icons.broken_image,
-              color: AppColors.textSecondary, size: size * 0.5),
-        ),
-      ),
+  Widget _netImage(String? url, {required double size, String name = ''}) {
+    return CharacterImage(
+      storedUrl: url,
+      characterName: name,
+      size: size,
     );
   }
 }

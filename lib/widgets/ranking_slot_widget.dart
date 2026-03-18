@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../models/game_session.dart';
 import '../models/category.dart';
 import '../utils/app_theme.dart';
+import 'character_image.dart';
 
 class RankingSlotWidget extends StatelessWidget {
   final int position;
@@ -30,9 +31,7 @@ class RankingSlotWidget extends StatelessWidget {
         duration: const Duration(milliseconds: 200),
         margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
         decoration: BoxDecoration(
-          color: isSelected
-              ? color.withOpacity(0.3)
-              : AppColors.surfaceVariant,
+          color: isSelected ? color.withOpacity(0.3) : AppColors.surfaceVariant,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
             color: isSelected ? color : AppColors.border,
@@ -74,17 +73,11 @@ class RankingSlotWidget extends StatelessWidget {
                       )
                     : Row(
                         children: [
-                          if (item?.imageUrl != null) ...[
-                            ClipRRect(
-                              borderRadius: BorderRadius.circular(6),
-                              child: Image.network(
-                                item!.imageUrl!,
-                                width: 36,
-                                height: 36,
-                                fit: BoxFit.cover,
-                                errorBuilder: (_, __, ___) =>
-                                    const Icon(Icons.image_not_supported, size: 36),
-                              ),
+                          if (item != null) ...[
+                            CharacterImage(
+                              storedUrl: item!.imageUrl,
+                              characterName: item!.name,
+                              size: 36,
                             ),
                             const SizedBox(width: 10),
                           ],

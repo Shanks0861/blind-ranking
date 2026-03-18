@@ -121,10 +121,8 @@ class GameService {
   }
 
   Future<Map<String, int>> fetchVoteResults(String sessionId) async {
-    final data = await _client
-        .from('votes')
-        .select()
-        .eq('session_id', sessionId);
+    final data =
+        await _client.from('votes').select().eq('session_id', sessionId);
 
     final results = <String, int>{};
     for (final row in data as List) {
@@ -171,15 +169,13 @@ class GameService {
   Stream<List<Map<String, dynamic>>> watchRankings(String sessionId) {
     return _client
         .from('player_rankings')
-        .stream(primaryKey: ['id'])
-        .eq('session_id', sessionId);
+        .stream(primaryKey: ['id']).eq('session_id', sessionId);
   }
 
   Stream<List<Map<String, dynamic>>> watchVotes(String sessionId) {
     return _client
         .from('votes')
-        .stream(primaryKey: ['id'])
-        .eq('session_id', sessionId);
+        .stream(primaryKey: ['id']).eq('session_id', sessionId);
   }
 
   // ── Helper ─────────────────────────────────────────────────────────────────

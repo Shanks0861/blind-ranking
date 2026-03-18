@@ -8,6 +8,7 @@ import '../../services/category_service.dart';
 import '../../services/lobby_service.dart';
 import '../../utils/app_theme.dart';
 import '../../widgets/item_reveal_dialog.dart';
+import '../../widgets/character_image.dart';
 import '../final/final_screen.dart';
 
 const List<String> kTiers = ['S', 'A', 'B', 'C', 'D', 'F'];
@@ -453,7 +454,7 @@ class _GameScreenState extends State<GameScreen> {
   }
 
   Widget _itemImage(GameItem? item, {required double size}) {
-    if (item?.imageUrl == null) {
+    if (item == null) {
       return Container(
         width: size,
         height: size,
@@ -463,21 +464,10 @@ class _GameScreenState extends State<GameScreen> {
             color: AppColors.textSecondary, size: 20),
       );
     }
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(8),
-      child: Image.network(
-        item!.imageUrl!,
-        width: size,
-        height: size,
-        fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => Container(
-          width: size,
-          height: size,
-          color: AppColors.surface,
-          child: const Icon(Icons.broken_image,
-              color: AppColors.textSecondary, size: 20),
-        ),
-      ),
+    return CharacterImage(
+      storedUrl: item.imageUrl,
+      characterName: item.name,
+      size: size,
     );
   }
 }

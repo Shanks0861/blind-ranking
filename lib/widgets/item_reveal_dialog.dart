@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/category.dart';
+import 'character_image.dart';
 import '../utils/app_theme.dart';
 
 class ItemRevealDialog extends StatefulWidget {
@@ -79,40 +80,12 @@ class _ItemRevealDialogState extends State<ItemRevealDialog>
                 ),
                 const SizedBox(height: 20),
                 // Bild
-                if (widget.item.imageUrl != null)
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(16),
-                    child: Image.network(
-                      widget.item.imageUrl!,
-                      width: 180,
-                      height: 180,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => Container(
-                        width: 180,
-                        height: 180,
-                        color: AppColors.surfaceVariant,
-                        child: const Icon(
-                          Icons.image_not_supported,
-                          size: 60,
-                          color: AppColors.textSecondary,
-                        ),
-                      ),
-                    ),
-                  )
-                else
-                  Container(
-                    width: 180,
-                    height: 180,
-                    decoration: BoxDecoration(
-                      color: AppColors.surfaceVariant,
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: const Icon(
-                      Icons.help_outline,
-                      size: 80,
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
+                CharacterImage(
+                  storedUrl: widget.item.imageUrl,
+                  characterName: widget.item.name,
+                  size: 180,
+                  fit: BoxFit.cover,
+                ),
                 const SizedBox(height: 16),
                 // Name
                 Text(
