@@ -5,14 +5,18 @@ import '../../models/lobby.dart';
 import '../../models/category.dart';
 import '../../services/game_service.dart';
 import '../../services/category_service.dart';
+import '../../services/lobby_service.dart';
 import '../../utils/app_theme.dart';
 import '../game/game_screen.dart';
+import '../lobby/lobby_screen.dart';
 
 class FinalScreen extends StatefulWidget {
   final GameSession session;
   final AppUser currentUser;
   final GameService gameService;
   final CategoryService categoryService;
+  final LobbyService lobbyService;
+  final Lobby lobby;
   final bool isHost;
   final Map<int, GameItem> myPlacedItems;
 
@@ -22,6 +26,8 @@ class FinalScreen extends StatefulWidget {
     required this.currentUser,
     required this.gameService,
     required this.categoryService,
+    required this.lobbyService,
+    required this.lobby,
     required this.isHost,
     required this.myPlacedItems,
   });
@@ -39,6 +45,8 @@ class _FinalScreenState extends State<FinalScreen>
   bool _hasVoted = false;
   bool _votingOpen = false;
   bool _loading = true;
+  bool _restarting = false;
+  bool _navigating = false;
 
   @override
   void initState() {
@@ -59,7 +67,6 @@ class _FinalScreenState extends State<FinalScreen>
     final allIds =
         rankings.expand((r) => r.entries.map((e) => e.itemId)).toSet().toList();
     final items = await widget.categoryService.fetchItemsByIds(allIds);
-    // Auch eigene Placed-Items einfügen falls noch nicht drin
     for (final item in widget.myPlacedItems.values) {
       if (!items.any((i) => i.id == item.id)) items.add(item);
     }
@@ -78,6 +85,7 @@ class _FinalScreenState extends State<FinalScreen>
     setState(() => _votingOpen = true);
   }
 
+  // Jetzt für ALLE abstimmbar – auch für sich selbst
   Future<void> _vote(String votedForUserId) async {
     if (_hasVoted) return;
     await widget.gameService.submitVote(
@@ -100,6 +108,39 @@ class _FinalScreenState extends State<FinalScreen>
         .key;
   }
 
+  // Neustart: Phase auf done → alle per Realtime zurück → dann Lobby resetten
+  Future<void> _restartGame() async {
+    setState(() => _restarting = true);
+    // Erst phase=done setzen → triggert _goToLobby() bei ALLEN via Stream
+    await widget.gameService.advancePhase(
+      sessionId: widget.session.id,
+      newPhase: GamePhase.done,
+    );
+    // Dann Lobby wieder auf waiting → neue Spieler können joinen
+    await widget.lobbyService.updateLobbyStatus(
+      lobbyId: widget.lobby.id,
+      status: LobbyStatus.waiting,
+    );
+    // Host navigiert auch selbst
+    if (mounted) _goToLobby();
+  }
+
+  void _goToLobby() {
+    if (_navigating) return;
+    _navigating = true;
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(
+        builder: (_) => LobbyScreen(
+          lobby: widget.lobby,
+          currentUser: widget.currentUser,
+          lobbyService: widget.lobbyService,
+        ),
+      ),
+      (route) => false,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -110,10 +151,7 @@ class _FinalScreenState extends State<FinalScreen>
             style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
         bottom: TabBar(
           controller: _tabCtrl,
-          tabs: const [
-            Tab(text: 'Meine Liste'),
-            Tab(text: 'Alle Rankings'),
-          ],
+          tabs: const [Tab(text: 'Meine Liste'), Tab(text: 'Alle Rankings')],
           indicatorColor: AppColors.primary,
           labelColor: AppColors.primary,
           unselectedLabelColor: AppColors.textSecondary,
@@ -121,39 +159,33 @@ class _FinalScreenState extends State<FinalScreen>
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
-          : StreamBuilder<List<Map<String, dynamic>>>(
-              stream: widget.gameService.watchVotes(widget.session.id),
-              builder: (context, voteSnap) {
-                final votes = voteSnap.data ?? [];
-                final voteMap = <String, int>{};
-                for (final v in votes) {
-                  final uid = v['voted_for_user_id'] as String;
-                  voteMap[uid] = (voteMap[uid] ?? 0) + 1;
-                }
-
-                // Voting automatisch öffnen wenn Host es gestartet hat
-                if (voteSnap.hasData && !_votingOpen) {
-                  final sessionVotingOpen =
-                      widget.session.phase == GamePhase.voting;
-                  if (sessionVotingOpen) {
+          : StreamBuilder<Map<String, dynamic>?>(
+              stream: widget.gameService.watchSession(widget.session.id),
+              builder: (context, sessionSnap) {
+                // Alle User: wenn Phase auf "done" → zurück zur Lobby
+                if (sessionSnap.hasData && sessionSnap.data != null) {
+                  final phase = sessionSnap.data!['phase'] as String?;
+                  if (phase == 'voting' && !_votingOpen) {
                     WidgetsBinding.instance.addPostFrameCallback((_) {
                       if (mounted) setState(() => _votingOpen = true);
                     });
                   }
+                  if (phase == 'done' && !_navigating) {
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      if (mounted) _goToLobby();
+                    });
+                  }
                 }
 
-                return StreamBuilder<Map<String, dynamic>?>(
-                  stream: widget.gameService.watchSession(widget.session.id),
-                  builder: (context, sessionSnap) {
-                    if (sessionSnap.hasData && sessionSnap.data != null) {
-                      final phase = sessionSnap.data!['phase'] as String?;
-                      if (phase == 'voting' && !_votingOpen) {
-                        WidgetsBinding.instance.addPostFrameCallback((_) {
-                          if (mounted) setState(() => _votingOpen = true);
-                        });
-                      }
+                return StreamBuilder<List<Map<String, dynamic>>>(
+                  stream: widget.gameService.watchVotes(widget.session.id),
+                  builder: (context, voteSnap) {
+                    final votes = voteSnap.data ?? [];
+                    final voteMap = <String, int>{};
+                    for (final v in votes) {
+                      final uid = v['voted_for_user_id'] as String;
+                      voteMap[uid] = (voteMap[uid] ?? 0) + 1;
                     }
-
                     return TabBarView(
                       controller: _tabCtrl,
                       children: [
@@ -206,13 +238,11 @@ class _FinalScreenState extends State<FinalScreen>
                       const BorderRadius.horizontal(left: Radius.circular(13)),
                 ),
                 alignment: Alignment.center,
-                child: Text(
-                  '${pos}',
-                  style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 20),
-                ),
+                child: Text('$pos',
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 20)),
               ),
               const SizedBox(width: 14),
               _netImage(item.imageUrl, size: 52),
@@ -231,7 +261,7 @@ class _FinalScreenState extends State<FinalScreen>
     );
   }
 
-  // ── Tab 2: Alle Rankings + Voting ─────────────────────────────────────────
+  // ── Tab 2: Alle Rankings + Voting + Neustart ──────────────────────────────
 
   Widget _buildAllRankings(Map<String, int> voteMap) {
     return SingleChildScrollView(
@@ -245,7 +275,7 @@ class _FinalScreenState extends State<FinalScreen>
             const SizedBox(height: 16),
           ],
 
-          // Player Columns horizontal
+          // Alle Rankings horizontal
           SizedBox(
             height: 420,
             child: ListView.separated(
@@ -258,8 +288,8 @@ class _FinalScreenState extends State<FinalScreen>
 
           const SizedBox(height: 24),
 
-          // Voting
-          if (widget.isHost && !_votingOpen)
+          // Voting starten (Host)
+          if (widget.isHost && !_votingOpen) ...[
             SizedBox(
               width: double.infinity,
               height: 50,
@@ -269,12 +299,80 @@ class _FinalScreenState extends State<FinalScreen>
                 label: const Text('Voting starten'),
               ),
             ),
-          if (_votingOpen &&
-              !_hasVoted &&
-              widget.currentUser.id != '') // eigene Stimme abgeben
+            const SizedBox(height: 12),
+          ],
+
+          // Voting Buttons — ALLE können abstimmen, auch für sich selbst
+          if (_votingOpen && !_hasVoted) ...[
             _buildVotingButtons(),
-          if (_hasVoted) _buildVoteResults(voteMap),
-          if (_votingOpen && !_hasVoted) const SizedBox(height: 8),
+            const SizedBox(height: 16),
+          ],
+
+          // Ergebnisse
+          if (_hasVoted) ...[
+            _buildVoteResults(voteMap),
+            const SizedBox(height: 24),
+          ],
+
+          // Neustart Button (Host) — erscheint nach dem Abstimmen
+          if (widget.isHost && _hasVoted) ...[
+            const Divider(color: AppColors.border),
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              height: 54,
+              child: ElevatedButton.icon(
+                onPressed: _restarting ? null : _restartGame,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.surfaceVariant,
+                  foregroundColor: AppColors.textPrimary,
+                  side: const BorderSide(color: AppColors.border),
+                ),
+                icon: _restarting
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: Colors.white))
+                    : const Icon(Icons.refresh),
+                label: const Text('Neues Spiel starten',
+                    style: TextStyle(fontWeight: FontWeight.bold)),
+              ),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Alle Spieler kehren zur Lobby zurück.',
+              style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
+              textAlign: TextAlign.center,
+            ),
+          ],
+
+          // Nicht-Host: warte auf Neustart
+          if (!widget.isHost && _hasVoted) ...[
+            const Divider(color: AppColors.border),
+            const SizedBox(height: 16),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: AppColors.surfaceVariant,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppColors.border),
+              ),
+              child: const Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2)),
+                  SizedBox(width: 12),
+                  Text('Warte auf Neustart durch den Host…',
+                      style: TextStyle(color: AppColors.textSecondary)),
+                ],
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -310,7 +408,6 @@ class _FinalScreenState extends State<FinalScreen>
   Widget _buildPlayerColumn(PlayerRanking ranking, Map<String, int> voteMap) {
     final sorted = List<RankingEntry>.from(ranking.entries)
       ..sort((a, b) => a.position.compareTo(b.position));
-
     return Container(
       width: 170,
       decoration: BoxDecoration(
@@ -356,9 +453,7 @@ class _FinalScreenState extends State<FinalScreen>
                     borderRadius: BorderRadius.circular(8),
                     border: Border(
                       left: BorderSide(
-                        color: AppColors.rankColor(entry.position),
-                        width: 3,
-                      ),
+                          color: AppColors.rankColor(entry.position), width: 3),
                     ),
                   ),
                   child: Row(
@@ -369,20 +464,15 @@ class _FinalScreenState extends State<FinalScreen>
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
-                              entry.tier ?? '#${entry.position}',
-                              style: TextStyle(
-                                color: AppColors.rankColor(entry.position),
-                                fontWeight: FontWeight.bold,
-                                fontSize: 11,
-                              ),
-                            ),
-                            Text(
-                              item?.name ?? '?',
-                              style: const TextStyle(
-                                  color: AppColors.textPrimary, fontSize: 12),
-                              overflow: TextOverflow.ellipsis,
-                            ),
+                            Text(entry.tier ?? '#${entry.position}',
+                                style: TextStyle(
+                                    color: AppColors.rankColor(entry.position),
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 11)),
+                            Text(item?.name ?? '?',
+                                style: const TextStyle(
+                                    color: AppColors.textPrimary, fontSize: 12),
+                                overflow: TextOverflow.ellipsis),
                           ],
                         ),
                       ),
@@ -397,9 +487,8 @@ class _FinalScreenState extends State<FinalScreen>
     );
   }
 
+  // Alle Rankings — inkl. eigenes — abstimmbar
   Widget _buildVotingButtons() {
-    final others =
-        _rankings.where((r) => r.userId != widget.currentUser.id).toList();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -408,9 +497,12 @@ class _FinalScreenState extends State<FinalScreen>
                 color: AppColors.textPrimary,
                 fontWeight: FontWeight.bold,
                 fontSize: 16)),
+        const SizedBox(height: 4),
+        const Text('Du kannst auch für dich selbst stimmen.',
+            style: TextStyle(color: AppColors.textSecondary, fontSize: 13)),
         const SizedBox(height: 12),
-        ...others.map((r) {
-          final votes = _voteResults[r.userId] ?? 0;
+        ..._rankings.map((r) {
+          final isMe = r.userId == widget.currentUser.id;
           return Padding(
             padding: const EdgeInsets.only(bottom: 10),
             child: SizedBox(
@@ -419,10 +511,30 @@ class _FinalScreenState extends State<FinalScreen>
               child: OutlinedButton(
                 onPressed: () => _vote(r.userId),
                 style: OutlinedButton.styleFrom(
-                  foregroundColor: AppColors.accent,
-                  side: const BorderSide(color: AppColors.accent),
+                  foregroundColor: isMe ? AppColors.primary : AppColors.accent,
+                  side: BorderSide(
+                      color: isMe ? AppColors.primary : AppColors.accent),
                 ),
-                child: Text('${r.displayName} 👍'),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text('${r.displayName} 👍'),
+                    if (isMe) ...[
+                      const SizedBox(width: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: AppColors.primary.withOpacity(0.15),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Text('Ich',
+                            style: TextStyle(
+                                fontSize: 11, fontWeight: FontWeight.bold)),
+                      ),
+                    ],
+                  ],
+                ),
               ),
             ),
           );
@@ -447,6 +559,7 @@ class _FinalScreenState extends State<FinalScreen>
         ...sorted.map((r) {
           final votes = voteMap[r.userId] ?? 0;
           final isWinner = r.userId == _winnerId;
+          final isMe = r.userId == widget.currentUser.id;
           return Container(
             margin: const EdgeInsets.only(bottom: 8),
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -454,18 +567,27 @@ class _FinalScreenState extends State<FinalScreen>
               color:
                   isWinner ? Colors.amber.withOpacity(0.1) : AppColors.surface,
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: isWinner ? Colors.amber : AppColors.border,
-              ),
+              border:
+                  Border.all(color: isWinner ? Colors.amber : AppColors.border),
             ),
             child: Row(
               children: [
                 if (isWinner) const Text('🏆 ', style: TextStyle(fontSize: 20)),
                 Expanded(
-                  child: Text(r.displayName,
-                      style: const TextStyle(
-                          color: AppColors.textPrimary,
-                          fontWeight: FontWeight.w600)),
+                  child: Row(
+                    children: [
+                      Text(r.displayName,
+                          style: const TextStyle(
+                              color: AppColors.textPrimary,
+                              fontWeight: FontWeight.w600)),
+                      if (isMe) ...[
+                        const SizedBox(width: 6),
+                        const Text('(Du)',
+                            style: TextStyle(
+                                color: AppColors.textSecondary, fontSize: 12)),
+                      ],
+                    ],
+                  ),
                 ),
                 Text('$votes Vote${votes != 1 ? 's' : ''}',
                     style: const TextStyle(
@@ -484,9 +606,8 @@ class _FinalScreenState extends State<FinalScreen>
         width: size,
         height: size,
         decoration: BoxDecoration(
-          color: AppColors.surfaceVariant,
-          borderRadius: BorderRadius.circular(6),
-        ),
+            color: AppColors.surfaceVariant,
+            borderRadius: BorderRadius.circular(6)),
         child: Icon(Icons.image_outlined,
             color: AppColors.textSecondary, size: size * 0.5),
       );

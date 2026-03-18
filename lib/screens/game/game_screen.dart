@@ -5,6 +5,7 @@ import '../../models/game_session.dart';
 import '../../models/category.dart';
 import '../../services/game_service.dart';
 import '../../services/category_service.dart';
+import '../../services/lobby_service.dart';
 import '../../utils/app_theme.dart';
 import '../../widgets/item_reveal_dialog.dart';
 import '../final/final_screen.dart';
@@ -17,6 +18,7 @@ class GameScreen extends StatefulWidget {
   final AppUser currentUser;
   final GameService gameService;
   final CategoryService categoryService;
+  final LobbyService lobbyService;
 
   const GameScreen({
     super.key,
@@ -25,6 +27,7 @@ class GameScreen extends StatefulWidget {
     required this.currentUser,
     required this.gameService,
     required this.categoryService,
+    required this.lobbyService,
   });
 
   @override
@@ -34,7 +37,6 @@ class GameScreen extends StatefulWidget {
 class _GameScreenState extends State<GameScreen> {
   late GameSession _session;
   GameItem? _currentItem;
-  // position → item (für Anzeige in Liste)
   final Map<int, GameItem> _placedItems = {};
   bool _revealShowing = false;
   bool _confirmed = false;
@@ -89,11 +91,6 @@ class _GameScreenState extends State<GameScreen> {
 
   Future<void> _confirmSelection() async {
     if (_selectedSlot == null || _currentItem == null) return;
-    final entry = RankingEntry(
-      itemId: _currentItem!.id,
-      position: _selectedSlot!,
-      tier: isTierList ? kTiers[_selectedSlot! - 1] : null,
-    );
     setState(() {
       _placedItems[_selectedSlot!] = _currentItem!;
       _confirmed = true;
@@ -137,6 +134,8 @@ class _GameScreenState extends State<GameScreen> {
           currentUser: widget.currentUser,
           gameService: widget.gameService,
           categoryService: widget.categoryService,
+          lobbyService: widget.lobbyService,
+          lobby: widget.lobby,
           isHost: isHost,
           myPlacedItems: _placedItems,
         ),
@@ -166,8 +165,6 @@ class _GameScreenState extends State<GameScreen> {
         builder: (context, snapshot) {
           if (snapshot.hasData && snapshot.data != null) {
             final updated = GameSession.fromMap(snapshot.data!);
-
-            // Nächstes Item → alle laden es
             if (updated.currentItemIndex != _session.currentItemIndex) {
               WidgetsBinding.instance.addPostFrameCallback((_) {
                 if (!mounted) return;
@@ -175,8 +172,6 @@ class _GameScreenState extends State<GameScreen> {
                 _loadCurrentItem();
               });
             }
-
-            // Finale starten
             if (updated.phase == GamePhase.finalPhase && !_navigating) {
               WidgetsBinding.instance.addPostFrameCallback((_) {
                 if (mounted) _goToFinal(updated);
@@ -186,16 +181,11 @@ class _GameScreenState extends State<GameScreen> {
 
           return Column(
             children: [
-              // Aktuelles Item Anzeige
               if (_currentItem != null && !_revealShowing)
                 _buildCurrentItemBar(),
-
-              // Ranking Liste
               Expanded(
                 child: isTierList ? _buildTierList() : _buildRankingList(),
               ),
-
-              // Bestätigen
               if (!_confirmed && !_revealShowing)
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
@@ -213,8 +203,6 @@ class _GameScreenState extends State<GameScreen> {
                     ),
                   ),
                 ),
-
-              // Bestätigt Banner
               if (_confirmed)
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
@@ -237,8 +225,6 @@ class _GameScreenState extends State<GameScreen> {
                     ),
                   ),
                 ),
-
-              // Host: Nächstes / Finale
               if (isHost && _confirmed)
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
@@ -259,8 +245,6 @@ class _GameScreenState extends State<GameScreen> {
                     ),
                   ),
                 ),
-
-              // Nicht-Host: warte
               if (!isHost && _confirmed)
                 const Padding(
                   padding: EdgeInsets.fromLTRB(16, 0, 16, 16),
@@ -332,7 +316,6 @@ class _GameScreenState extends State<GameScreen> {
         final placed = _placedItems[pos];
         final isSelected = _selectedSlot == pos;
         final color = AppColors.rankColor(pos);
-
         return GestureDetector(
           onTap: (_confirmed || placed != null)
               ? null
@@ -360,9 +343,7 @@ class _GameScreenState extends State<GameScreen> {
                     width: 34,
                     height: 34,
                     decoration: BoxDecoration(
-                      color: color,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
+                        color: color, borderRadius: BorderRadius.circular(8)),
                     alignment: Alignment.center,
                     child: Text('$pos',
                         style: const TextStyle(
@@ -409,7 +390,6 @@ class _GameScreenState extends State<GameScreen> {
         final placed = _placedItems[pos];
         final isSelected = _selectedSlot == pos;
         final color = AppColors.tierColors[tier] ?? Colors.grey;
-
         return GestureDetector(
           onTap: (_confirmed || placed != null)
               ? null
@@ -421,9 +401,8 @@ class _GameScreenState extends State<GameScreen> {
             margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
             decoration: BoxDecoration(
               border: Border.all(
-                color: isSelected ? color : AppColors.border,
-                width: isSelected ? 2 : 1,
-              ),
+                  color: isSelected ? color : AppColors.border,
+                  width: isSelected ? 2 : 1),
               borderRadius: BorderRadius.circular(10),
             ),
             child: Row(
@@ -479,9 +458,7 @@ class _GameScreenState extends State<GameScreen> {
         width: size,
         height: size,
         decoration: BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.circular(8),
-        ),
+            color: AppColors.surface, borderRadius: BorderRadius.circular(8)),
         child: const Icon(Icons.image_not_supported,
             color: AppColors.textSecondary, size: 20),
       );

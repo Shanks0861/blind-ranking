@@ -151,6 +151,7 @@ class _LobbyScreenState extends State<LobbyScreen> {
           currentUser: widget.currentUser,
           gameService: _gameService,
           categoryService: _categoryService,
+          lobbyService: widget.lobbyService,
         ),
       ),
     );
