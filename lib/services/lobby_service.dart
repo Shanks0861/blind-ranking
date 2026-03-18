@@ -83,11 +83,15 @@ class LobbyService {
     required String lobbyId,
     String? categoryId,
     String? subCategoryId,
+    bool clearSubCategory = false,
     ListSize? listSize,
   }) async {
     final updates = <String, dynamic>{};
     if (categoryId != null) updates['category_id'] = categoryId;
-    if (subCategoryId != null) updates['sub_category_id'] = subCategoryId;
+    // clearSubCategory=true setzt explizit auf null ("Alle" gewählt)
+    if (clearSubCategory || subCategoryId != null) {
+      updates['sub_category_id'] = subCategoryId;
+    }
     if (listSize != null) updates['list_size'] = listSize.name;
 
     if (updates.isNotEmpty) {
@@ -101,8 +105,7 @@ class LobbyService {
   }) async {
     await _client
         .from('lobbies')
-        .update({'status': status.name})
-        .eq('id', lobbyId);
+        .update({'status': status.name}).eq('id', lobbyId);
   }
 
   // ── Lobby verlassen ────────────────────────────────────────────────────────
@@ -126,8 +129,7 @@ class LobbyService {
         .stream(primaryKey: ['id'])
         .eq('lobby_id', lobbyId)
         .map(
-          (rows) =>
-              rows.map((r) => LobbyPlayer.fromMap(r)).toList(),
+          (rows) => rows.map((r) => LobbyPlayer.fromMap(r)).toList(),
         );
   }
 
@@ -142,10 +144,8 @@ class LobbyService {
   // ── Spieler Daten abrufen ──────────────────────────────────────────────────
 
   Future<List<LobbyPlayer>> fetchPlayers(String lobbyId) async {
-    final data = await _client
-        .from('lobby_players')
-        .select()
-        .eq('lobby_id', lobbyId);
+    final data =
+        await _client.from('lobby_players').select().eq('lobby_id', lobbyId);
     return (data as List)
         .map((e) => LobbyPlayer.fromMap(e as Map<String, dynamic>))
         .toList();

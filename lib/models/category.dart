@@ -1,8 +1,8 @@
 class Category {
   final String id;
   final String name;
-  final String? parentId; // null = Hauptkategorie
-  final String? createdBy; // null = system
+  final String? parentId;
+  final String? createdBy;
   final List<SubCategory> subCategories;
 
   const Category({
@@ -24,32 +24,39 @@ class Category {
     );
   }
 
-  Map<String, dynamic> toMap() {
-    return {
-      'id': id,
-      'name': name,
-      'parent_id': parentId,
-      'created_by': createdBy,
-    };
-  }
+  Map<String, dynamic> toMap() => {
+        'id': id,
+        'name': name,
+        'parent_id': parentId,
+        'created_by': createdBy,
+      };
+
+  Category copyWith({
+    String? categoryId,
+    String? subCategoryId,
+    dynamic listSize,
+    dynamic status,
+    List<dynamic>? players,
+  }) =>
+      this;
 }
 
 class SubCategory {
   final String id;
   final String name;
-  final String categoryId;
+  final String parentId; // ← heißt in der DB parent_id, nicht category_id
 
   const SubCategory({
     required this.id,
     required this.name,
-    required this.categoryId,
+    required this.parentId,
   });
 
   factory SubCategory.fromMap(Map<String, dynamic> map) {
     return SubCategory(
       id: map['id'] as String,
       name: map['name'] as String,
-      categoryId: map['category_id'] as String,
+      parentId: map['parent_id'] as String, // ← Fix: war 'category_id'
     );
   }
 }
@@ -79,13 +86,11 @@ class GameItem {
     );
   }
 
-  Map<String, dynamic> toMap() {
-    return {
-      'id': id,
-      'name': name,
-      'image_url': imageUrl,
-      'category_id': categoryId,
-      'sub_category_id': subCategoryId,
-    };
-  }
+  Map<String, dynamic> toMap() => {
+        'id': id,
+        'name': name,
+        'image_url': imageUrl,
+        'category_id': categoryId,
+        'sub_category_id': subCategoryId,
+      };
 }

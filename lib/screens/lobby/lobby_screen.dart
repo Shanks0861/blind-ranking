@@ -80,6 +80,7 @@ class _LobbyScreenState extends State<LobbyScreen> {
     await widget.lobbyService.updateLobbySettings(
       lobbyId: _lobby.id,
       subCategoryId: sub?.id,
+      clearSubCategory: true,
     );
   }
 
