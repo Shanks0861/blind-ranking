@@ -77,10 +77,33 @@ class _AuthScreenState extends State<AuthScreen> {
         password: _passwordCtrl.text,
         displayName: _nameCtrl.text.trim(),
       );
-      widget.onAuthenticated();
+      // Wenn Email-Confirm aktiv: Session ist null, User muss Mail bestätigen
+      final session = widget.authService.currentUser;
+      if (session != null) {
+        widget.onAuthenticated();
+      } else {
+        setState(() => _error = null);
+        _setMode(_AuthMode.login);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                  '✅ Registrierung erfolgreich! Bitte bestätige deine E-Mail, dann kannst du dich einloggen.'),
+              duration: Duration(seconds: 6),
+              backgroundColor: Color(0xFF2E7D32),
+            ),
+          );
+        }
+      }
     } catch (e) {
-      setState(
-          () => _error = 'Registrierung fehlgeschlagen. Prüfe deine E-Mail.');
+      final msg = e.toString();
+      if (msg.contains('already registered') ||
+          msg.contains('User already registered')) {
+        setState(() => _error =
+            'Diese E-Mail ist bereits registriert. Bitte logge dich ein.');
+      } else {
+        setState(() => _error = 'Registrierung fehlgeschlagen: $msg');
+      }
     } finally {
       setState(() => _loading = false);
     }
@@ -101,7 +124,7 @@ class _AuthScreenState extends State<AuthScreen> {
       );
       widget.onAuthenticated();
     } catch (e) {
-      setState(() => _error = 'Gast-Login fehlgeschlagen.');
+      setState(() => _error = 'Gast-Login fehlgeschlagen: ${e.toString()}');
     } finally {
       setState(() => _loading = false);
     }

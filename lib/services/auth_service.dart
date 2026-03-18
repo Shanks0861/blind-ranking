@@ -20,10 +20,13 @@ class AuthService {
       data: {'display_name': displayName},
     );
 
-    if (response.user == null) throw Exception('Registrierung fehlgeschlagen');
+    // Supabase gibt user zurück auch wenn Email-Confirm aktiv ist
+    final user = response.user;
+    if (user == null) throw Exception('Registrierung fehlgeschlagen');
 
-    // Profil wird automatisch durch Datenbank-Trigger angelegt
-    return _buildAppUser(response.user!, displayName, false);
+    // Session kann null sein wenn Email-Confirm aktiv → trotzdem kein Fehler
+    // Profil wird per Trigger angelegt, kein manueller Insert nötig
+    return _buildAppUser(user, displayName, false);
   }
 
   Future<AppUser> signInWithEmail({
@@ -51,16 +54,30 @@ class AuthService {
 
   Future<AppUser> signInAsGuest({required String displayName}) async {
     final response = await _client.auth.signInAnonymously();
-
     if (response.user == null) throw Exception('Gast-Login fehlgeschlagen');
 
-    // Für Gäste manuell Profil setzen (Trigger hat keine display_name Info)
-    await _client.from('profiles').upsert({
-      'id': response.user!.id,
-      'display_name': displayName,
-      'is_guest': true,
-      'updated_at': DateTime.now().toIso8601String(),
-    });
+    final userId = response.user!.id;
+
+    // Profil direkt mit service_role-ähnlichem Ansatz: erst versuchen einzufügen
+    // RLS erlaubt INSERT with check(true) nach unserem Fix
+    try {
+      await _client.from('profiles').upsert({
+        'id': userId,
+        'display_name': displayName,
+        'is_guest': true,
+        'updated_at': DateTime.now().toIso8601String(),
+      }, onConflict: 'id');
+    } catch (_) {
+      // Falls Profil schon existiert (z.B. durch Trigger) → update
+      try {
+        await _client.from('profiles').update({
+          'display_name': displayName,
+          'updated_at': DateTime.now().toIso8601String(),
+        }).eq('id', userId);
+      } catch (_) {
+        // Profil konnte nicht gesetzt werden, aber Login trotzdem durchlassen
+      }
+    }
 
     return _buildAppUser(response.user!, displayName, true);
   }
@@ -69,13 +86,20 @@ class AuthService {
     final user = currentUser;
     if (user == null) return null;
 
-    final profile = await _fetchProfile(user.id);
-    final displayName = profile?['display_name'] as String? ??
-        user.email?.split('@').first ??
-        'Gast';
-    final isGuest = profile?['is_guest'] as bool? ?? false;
-
-    return _buildAppUser(user, displayName, isGuest);
+    try {
+      final profile = await _fetchProfile(user.id);
+      final displayName = profile?['display_name'] as String? ??
+          user.email?.split('@').first ??
+          'Gast';
+      final isGuest = profile?['is_guest'] as bool? ?? false;
+      return _buildAppUser(user, displayName, isGuest);
+    } catch (_) {
+      return _buildAppUser(
+        user,
+        user.email?.split('@').first ?? 'Gast',
+        false,
+      );
+    }
   }
 
   Future<void> signOut() async {
@@ -83,9 +107,16 @@ class AuthService {
   }
 
   Future<Map<String, dynamic>?> _fetchProfile(String userId) async {
-    final result =
-        await _client.from('profiles').select().eq('id', userId).maybeSingle();
-    return result;
+    try {
+      final result = await _client
+          .from('profiles')
+          .select()
+          .eq('id', userId)
+          .maybeSingle();
+      return result;
+    } catch (_) {
+      return null;
+    }
   }
 
   AppUser _buildAppUser(User user, String displayName, bool isGuest) {
