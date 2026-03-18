@@ -6,6 +6,7 @@ import '../../services/lobby_service.dart';
 import '../../services/auth_service.dart';
 import '../../utils/app_theme.dart';
 import '../lobby/lobby_screen.dart';
+import '../custom_category/custom_category_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   final AppUser user;
@@ -35,7 +36,10 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _createLobby() async {
-    setState(() { _loading = true; _error = null; });
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
     try {
       final lobby = await widget.lobbyService.createLobby(
         hostId: widget.user.id,
@@ -55,7 +59,10 @@ class _HomeScreenState extends State<HomeScreen> {
       setState(() => _error = 'Bitte gib einen 6-stelligen Code ein');
       return;
     }
-    setState(() { _loading = true; _error = null; });
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
     try {
       final lobby = await widget.lobbyService.joinLobby(
         code: code,
@@ -83,23 +90,34 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  void _goToCustomCategories() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => CustomCategoryScreen(currentUser: widget.user),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        title: const Text('Blind Ranking', style: TextStyle(fontWeight: FontWeight.bold)),
+        title: const Text('Blind Ranking',
+            style: TextStyle(fontWeight: FontWeight.bold)),
         actions: [
           IconButton(
             icon: const Icon(Icons.logout),
+            tooltip: 'Ausloggen',
             onPressed: () async {
               await widget.authService.signOut();
             },
           ),
         ],
       ),
-      body: Padding(
+      body: SingleChildScrollView(
         padding: const EdgeInsets.all(24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -113,51 +131,47 @@ class _HomeScreenState extends State<HomeScreen> {
                 fontWeight: FontWeight.bold,
               ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 4),
             Text(
               widget.user.isGuest ? 'Du spielst als Gast' : 'Eingeloggt',
               style: const TextStyle(color: AppColors.textSecondary),
             ),
-            const SizedBox(height: 48),
+            const SizedBox(height: 36),
 
             // Lobby erstellen
-            GestureDetector(
+            _bigCard(
               onTap: _loading ? null : _createLobby,
-              child: Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(24),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [AppColors.primary, AppColors.primaryVariant],
-                  ),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Icon(Icons.add_circle_outline, color: Colors.white, size: 32),
-                    const SizedBox(height: 12),
-                    const Text('Lobby erstellen', style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                    )),
-                    const SizedBox(height: 4),
-                    Text('Starte ein neues Spiel als Host',
-                        style: TextStyle(color: Colors.white.withOpacity(0.8))),
-                  ],
-                ),
+              gradient: const LinearGradient(
+                colors: [AppColors.primary, AppColors.primaryVariant],
               ),
+              icon: Icons.add_circle_outline,
+              title: 'Lobby erstellen',
+              subtitle: 'Starte ein neues Spiel als Host',
             ),
 
-            const SizedBox(height: 24),
+            const SizedBox(height: 14),
+
+            // Eigene Kategorien Card
+            _bigCard(
+              onTap: _goToCustomCategories,
+              gradient: const LinearGradient(
+                colors: [Color(0xFFFF6B9D), Color(0xFFFF8C42)],
+              ),
+              icon: Icons.auto_awesome,
+              title: 'Eigene Kategorien',
+              subtitle: 'Erstelle deine eigenen Listen & Items',
+              badge: 'NEU',
+            ),
+
+            const SizedBox(height: 28),
 
             // Lobby beitreten
-            const Text('Lobby beitreten', style: TextStyle(
-              color: AppColors.textPrimary,
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
-            )),
+            const Text('Lobby beitreten',
+                style: TextStyle(
+                  color: AppColors.textPrimary,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                )),
             const SizedBox(height: 12),
             Row(
               children: [
@@ -166,35 +180,121 @@ class _HomeScreenState extends State<HomeScreen> {
                     controller: _codeCtrl,
                     decoration: const InputDecoration(
                       hintText: 'Code eingeben…',
-                      prefixIcon: Icon(Icons.vpn_key, color: AppColors.textSecondary),
+                      prefixIcon:
+                          Icon(Icons.vpn_key, color: AppColors.textSecondary),
                     ),
                     textCapitalization: TextCapitalization.characters,
                     inputFormatters: [
                       FilteringTextInputFormatter.allow(RegExp(r'[A-Z0-9a-z]')),
                       LengthLimitingTextInputFormatter(6),
                     ],
+                    onSubmitted: (_) => _joinLobby(),
                   ),
                 ),
                 const SizedBox(width: 12),
-                ElevatedButton(
-                  onPressed: _loading ? null : _joinLobby,
-                  style: ElevatedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+                SizedBox(
+                  height: 56,
+                  child: ElevatedButton(
+                    onPressed: _loading ? null : _joinLobby,
+                    style: ElevatedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 22),
+                    ),
+                    child: const Text('Join',
+                        style: TextStyle(fontWeight: FontWeight.bold)),
                   ),
-                  child: const Text('Join'),
                 ),
               ],
             ),
 
             if (_error != null) ...[
               const SizedBox(height: 16),
-              Text(_error!, style: const TextStyle(color: Colors.red)),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                decoration: BoxDecoration(
+                  color: Colors.red.withOpacity(0.08),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: Colors.red.withOpacity(0.3)),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.error_outline,
+                        color: Colors.red, size: 18),
+                    const SizedBox(width: 8),
+                    Expanded(
+                        child: Text(_error!,
+                            style: const TextStyle(
+                                color: Colors.red, fontSize: 13))),
+                  ],
+                ),
+              ),
             ],
 
-            if (_loading) ...[
-              const SizedBox(height: 24),
-              const Center(child: CircularProgressIndicator()),
-            ],
+            if (_loading)
+              const Padding(
+                padding: EdgeInsets.only(top: 24),
+                child: Center(child: CircularProgressIndicator()),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _bigCard({
+    required VoidCallback? onTap,
+    required LinearGradient gradient,
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    String? badge,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(22),
+        decoration: BoxDecoration(
+          gradient: gradient,
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (badge != null) ...[
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 3),
+                      margin: const EdgeInsets.only(bottom: 8),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.25),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(badge,
+                          style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold)),
+                    ),
+                  ],
+                  Text(title,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 19,
+                        fontWeight: FontWeight.bold,
+                      )),
+                  const SizedBox(height: 4),
+                  Text(subtitle,
+                      style: TextStyle(
+                          color: Colors.white.withOpacity(0.85), fontSize: 13)),
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
+            Icon(icon, color: Colors.white.withOpacity(0.9), size: 36),
           ],
         ),
       ),

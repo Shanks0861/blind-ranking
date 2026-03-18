@@ -49,11 +49,8 @@ class CategoryService {
   }
 
   Future<GameItem?> fetchItemById(String id) async {
-    final data = await _client
-        .from('items')
-        .select()
-        .eq('id', id)
-        .maybeSingle();
+    final data =
+        await _client.from('items').select().eq('id', id).maybeSingle();
     return data != null ? GameItem.fromMap(data) : null;
   }
 
@@ -112,5 +109,14 @@ class CategoryService {
     return (data as List)
         .map((e) => Category.fromMap(e as Map<String, dynamic>))
         .toList();
+  }
+
+  Future<void> deleteCustomCategory(String categoryId) async {
+    await _client.from('items').delete().eq('category_id', categoryId);
+    await _client.from('categories').delete().eq('id', categoryId);
+  }
+
+  Future<void> deleteCustomItem(String itemId) async {
+    await _client.from('items').delete().eq('id', itemId);
   }
 }

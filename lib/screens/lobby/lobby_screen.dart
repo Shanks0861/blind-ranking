@@ -31,8 +31,13 @@ class _LobbyScreenState extends State<LobbyScreen> {
   List<Category> _categories = [];
   List<SubCategory> _subCategories = [];
 
+  Category? _selectedCategory;
+  SubCategory? _selectedSubCategory;
+  ListSize _selectedListSize = ListSize.top10;
+
   final _categoryService = CategoryService();
   final _gameService = GameService();
+  bool _starting = false;
 
   bool get isHost => _lobby.hostId == widget.currentUser.id;
 
@@ -40,6 +45,7 @@ class _LobbyScreenState extends State<LobbyScreen> {
   void initState() {
     super.initState();
     _lobby = widget.lobby;
+    _selectedListSize = _lobby.listSize;
     _loadCategories();
   }
 
@@ -50,59 +56,110 @@ class _LobbyScreenState extends State<LobbyScreen> {
 
   Future<void> _onCategorySelected(Category? cat) async {
     if (cat == null) return;
+
+    // Lokalen State sofort updaten
+    setState(() {
+      _selectedCategory = cat;
+      _selectedSubCategory = null;
+      _subCategories = [];
+      _lobby = _lobby.copyWith(categoryId: cat.id, subCategoryId: null);
+    });
+
+    // Supabase updaten
     await widget.lobbyService.updateLobbySettings(
       lobbyId: _lobby.id,
       categoryId: cat.id,
       subCategoryId: null,
     );
+
+    // Unterkategorien laden
     final subs = await _categoryService.fetchSubCategories(cat.id);
     setState(() => _subCategories = subs);
   }
 
+  Future<void> _onSubCategorySelected(SubCategory? sub) async {
+    setState(() {
+      _selectedSubCategory = sub;
+      _lobby = _lobby.copyWith(subCategoryId: sub?.id);
+    });
+    await widget.lobbyService.updateLobbySettings(
+      lobbyId: _lobby.id,
+      subCategoryId: sub?.id ?? '',
+    );
+  }
+
+  Future<void> _onListSizeSelected(ListSize? size) async {
+    if (size == null) return;
+    setState(() {
+      _selectedListSize = size;
+      _lobby = _lobby.copyWith(listSize: size);
+    });
+    await widget.lobbyService.updateLobbySettings(
+      lobbyId: _lobby.id,
+      listSize: size,
+    );
+  }
+
   Future<void> _startGame() async {
-    if (_lobby.categoryId == null) {
+    if (_selectedCategory == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Bitte wähle zuerst eine Kategorie')),
-      );
-      return;
-    }
-
-    final items = await _categoryService.fetchItems(
-      categoryId: _lobby.categoryId!,
-      subCategoryId: _lobby.subCategoryId,
-    );
-
-    if (items.length < 5) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Zu wenige Items in dieser Kategorie')),
-      );
-      return;
-    }
-
-    await widget.lobbyService.updateLobbyStatus(
-      lobbyId: _lobby.id,
-      status: LobbyStatus.playing,
-    );
-
-    final session = await _gameService.startSession(
-      lobbyId: _lobby.id,
-      allItemIds: items.map((e) => e.id).toList(),
-      listSize: _lobby.listSize,
-    );
-
-    if (mounted) {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(
-          builder: (_) => GameScreen(
-            session: session,
-            lobby: _lobby,
-            currentUser: widget.currentUser,
-            gameService: _gameService,
-            categoryService: _categoryService,
-          ),
+        const SnackBar(
+          content: Text('Bitte wähle zuerst eine Kategorie'),
+          backgroundColor: Colors.red,
         ),
       );
+      return;
+    }
+
+    setState(() => _starting = true);
+
+    try {
+      final items = await _categoryService.fetchItems(
+        categoryId: _selectedCategory!.id,
+        subCategoryId: _selectedSubCategory?.id,
+      );
+
+      if (items.length < 5) {
+        if (mounted)
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+                content: Text('Zu wenige Items in dieser Kategorie (mind. 5)')),
+          );
+        return;
+      }
+
+      await widget.lobbyService.updateLobbyStatus(
+        lobbyId: _lobby.id,
+        status: LobbyStatus.playing,
+      );
+
+      final session = await _gameService.startSession(
+        lobbyId: _lobby.id,
+        allItemIds: items.map((e) => e.id).toList(),
+        listSize: _selectedListSize,
+      );
+
+      if (mounted) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (_) => GameScreen(
+              session: session,
+              lobby: _lobby,
+              currentUser: widget.currentUser,
+              gameService: _gameService,
+              categoryService: _categoryService,
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted)
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Fehler: ${e.toString()}')),
+        );
+    } finally {
+      if (mounted) setState(() => _starting = false);
     }
   }
 
@@ -117,52 +174,84 @@ class _LobbyScreenState extends State<LobbyScreen> {
         stream: widget.lobbyService.watchPlayers(_lobby.id),
         builder: (context, snapshot) {
           _players = snapshot.data ?? [];
-          return Padding(
+          return SingleChildScrollView(
             padding: const EdgeInsets.all(20),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Code anzeigen
                 _buildCodeCard(),
                 const SizedBox(height: 20),
-                // Spieler
-                const Text('Spieler', style: TextStyle(
-                  color: AppColors.textPrimary,
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                )),
+                const Text('Spieler',
+                    style: TextStyle(
+                      color: AppColors.textPrimary,
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    )),
                 const SizedBox(height: 10),
                 ..._players.map((p) => _buildPlayerTile(p)),
                 const SizedBox(height: 20),
-                // Host-Einstellungen
                 if (isHost) ...[
                   _buildSettings(),
                   const SizedBox(height: 20),
+                  // Aktuell gewählte Kategorie anzeigen
+                  if (_selectedCategory != null)
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 10),
+                      margin: const EdgeInsets.only(bottom: 12),
+                      decoration: BoxDecoration(
+                        color: AppColors.primary.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                            color: AppColors.primary.withOpacity(0.3)),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.check_circle,
+                              color: AppColors.primary, size: 18),
+                          const SizedBox(width: 8),
+                          Text(
+                            _selectedSubCategory != null
+                                ? '${_selectedCategory!.name} › ${_selectedSubCategory!.name}'
+                                : '${_selectedCategory!.name} › Alle',
+                            style: const TextStyle(
+                                color: AppColors.primary,
+                                fontWeight: FontWeight.w600),
+                          ),
+                        ],
+                      ),
+                    ),
                   SizedBox(
                     width: double.infinity,
+                    height: 52,
                     child: ElevatedButton.icon(
-                      onPressed: _players.length >= 2 ? _startGame : null,
-                      icon: const Icon(Icons.play_arrow),
-                      label: const Text('Spiel starten'),
+                      onPressed: _starting ? null : _startGame,
+                      icon: _starting
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(
+                                  strokeWidth: 2, color: Colors.white))
+                          : const Icon(Icons.play_arrow),
+                      label: Text(_starting ? 'Startet...' : 'Spiel starten'),
                     ),
                   ),
                   if (_players.length < 2)
                     const Padding(
                       padding: EdgeInsets.only(top: 8),
                       child: Text(
-                        'Mindestens 2 Spieler nötig',
-                        style: TextStyle(color: AppColors.textSecondary),
+                        'Tipp: Du kannst auch alleine testen',
+                        style: TextStyle(
+                            color: AppColors.textSecondary, fontSize: 12),
                         textAlign: TextAlign.center,
                       ),
                     ),
-                ] else ...[
+                ] else
                   const Center(
-                    child: Text(
-                      'Warte auf den Host…',
-                      style: TextStyle(color: AppColors.textSecondary),
-                    ),
+                    child: Text('Warte auf den Host…',
+                        style: TextStyle(color: AppColors.textSecondary)),
                   ),
-                ],
               ],
             ),
           );
@@ -182,7 +271,8 @@ class _LobbyScreenState extends State<LobbyScreen> {
       ),
       child: Column(
         children: [
-          const Text('Lobby Code', style: TextStyle(color: AppColors.textSecondary)),
+          const Text('Lobby Code',
+              style: TextStyle(color: AppColors.textSecondary)),
           const SizedBox(height: 8),
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -232,7 +322,8 @@ class _LobbyScreenState extends State<LobbyScreen> {
           const SizedBox(width: 12),
           Expanded(
             child: Text(player.displayName,
-                style: const TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w600)),
+                style: const TextStyle(
+                    color: AppColors.textPrimary, fontWeight: FontWeight.w600)),
           ),
           if (player.isHost)
             Container(
@@ -241,7 +332,8 @@ class _LobbyScreenState extends State<LobbyScreen> {
                 color: AppColors.accent.withOpacity(0.2),
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: const Text('Host', style: TextStyle(color: AppColors.accent, fontSize: 12)),
+              child: const Text('Host',
+                  style: TextStyle(color: AppColors.accent, fontSize: 12)),
             ),
         ],
       ),
@@ -255,58 +347,80 @@ class _LobbyScreenState extends State<LobbyScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Spieleinstellungen', style: TextStyle(
-              color: AppColors.textPrimary,
-              fontWeight: FontWeight.bold,
-              fontSize: 16,
-            )),
+            const Text('Spieleinstellungen',
+                style: TextStyle(
+                  color: AppColors.textPrimary,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                )),
             const SizedBox(height: 16),
+
             // Kategorie
             DropdownButtonFormField<Category>(
-              decoration: const InputDecoration(labelText: 'Kategorie'),
-              value: _categories.where((c) => c.id == _lobby.categoryId).firstOrNull,
-              items: _categories.map((c) => DropdownMenuItem(value: c, child: Text(c.name))).toList(),
+              decoration: const InputDecoration(labelText: 'Kategorie wählen'),
+              value: _selectedCategory,
+              hint: const Text('Kategorie wählen...',
+                  style: TextStyle(color: AppColors.textSecondary)),
+              items: _categories
+                  .map((c) => DropdownMenuItem(
+                        value: c,
+                        child: Text(c.name,
+                            style:
+                                const TextStyle(color: AppColors.textPrimary)),
+                      ))
+                  .toList(),
               onChanged: _onCategorySelected,
               dropdownColor: AppColors.surface,
               style: const TextStyle(color: AppColors.textPrimary),
             ),
+
+            // Unterkategorie — nur wenn geladen
             if (_subCategories.isNotEmpty) ...[
               const SizedBox(height: 12),
-              DropdownButtonFormField<SubCategory>(
-                decoration: const InputDecoration(labelText: 'Unterkategorie (optional)'),
-                value: _subCategories.where((s) => s.id == _lobby.subCategoryId).firstOrNull,
+              DropdownButtonFormField<SubCategory?>(
+                decoration: const InputDecoration(
+                    labelText: 'Unterkategorie (optional)'),
+                value: _selectedSubCategory,
                 items: [
-                  const DropdownMenuItem(value: null, child: Text('Alle')),
-                  ..._subCategories.map((s) => DropdownMenuItem(value: s, child: Text(s.name))),
+                  const DropdownMenuItem<SubCategory?>(
+                    value: null,
+                    child: Text('Alle',
+                        style: TextStyle(color: AppColors.textPrimary)),
+                  ),
+                  ..._subCategories.map((s) => DropdownMenuItem<SubCategory?>(
+                        value: s,
+                        child: Text(s.name,
+                            style:
+                                const TextStyle(color: AppColors.textPrimary)),
+                      )),
                 ],
-                onChanged: (sub) async {
-                  await widget.lobbyService.updateLobbySettings(
-                    lobbyId: _lobby.id,
-                    subCategoryId: sub?.id,
-                  );
-                },
+                onChanged: _onSubCategorySelected,
                 dropdownColor: AppColors.surface,
                 style: const TextStyle(color: AppColors.textPrimary),
               ),
             ],
+
             const SizedBox(height: 12),
-            // Listen Größe
+
+            // Listengröße
             DropdownButtonFormField<ListSize>(
               decoration: const InputDecoration(labelText: 'Listen Größe'),
-              value: _lobby.listSize,
+              value: _selectedListSize,
               items: const [
-                DropdownMenuItem(value: ListSize.top5, child: Text('Top 5')),
-                DropdownMenuItem(value: ListSize.top10, child: Text('Top 10')),
-                DropdownMenuItem(value: ListSize.tierList, child: Text('Tier List (S–F)')),
+                DropdownMenuItem(
+                    value: ListSize.top5,
+                    child: Text('Top 5',
+                        style: TextStyle(color: AppColors.textPrimary))),
+                DropdownMenuItem(
+                    value: ListSize.top10,
+                    child: Text('Top 10',
+                        style: TextStyle(color: AppColors.textPrimary))),
+                DropdownMenuItem(
+                    value: ListSize.tierList,
+                    child: Text('Tier List (S–F)',
+                        style: TextStyle(color: AppColors.textPrimary))),
               ],
-              onChanged: (size) async {
-                if (size != null) {
-                  await widget.lobbyService.updateLobbySettings(
-                    lobbyId: _lobby.id,
-                    listSize: size,
-                  );
-                }
-              },
+              onChanged: _onListSizeSelected,
               dropdownColor: AppColors.surface,
               style: const TextStyle(color: AppColors.textPrimary),
             ),
