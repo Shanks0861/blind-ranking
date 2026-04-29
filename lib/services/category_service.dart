@@ -4,45 +4,80 @@ import '../models/category.dart';
 class CategoryService {
   final SupabaseClient _client = Supabase.instance.client;
 
-  // ── Kategorien laden ───────────────────────────────────────────────────────
-
+  // Nur echte Hauptkategorien (parent_id IS NULL)
   Future<List<Category>> fetchMainCategories() async {
     final data = await _client
         .from('categories')
         .select()
         .isFilter('parent_id', null)
         .order('name');
-
     return (data as List)
         .map((e) => Category.fromMap(e as Map<String, dynamic>))
         .toList();
   }
 
+  // Unterkategorien einer Kategorie (egal welche Ebene)
   Future<List<SubCategory>> fetchSubCategories(String categoryId) async {
     final data = await _client
         .from('categories')
         .select()
         .eq('parent_id', categoryId)
         .order('name');
-
     return (data as List)
         .map((e) => SubCategory.fromMap(e as Map<String, dynamic>))
         .toList();
   }
 
-  // ── Items laden ────────────────────────────────────────────────────────────
-
+  // Items laden — unterstützt jetzt auch Unter-Unterkategorien:
+  // Wenn subCategoryId gesetzt ist, werden Items dieser Sub geladen.
+  // Falls die Sub selbst noch Kinder hat, werden deren Items auch inkludiert.
   Future<List<GameItem>> fetchItems({
     required String categoryId,
     String? subCategoryId,
   }) async {
-    var query = _client.from('items').select().eq('category_id', categoryId);
-
     if (subCategoryId != null) {
-      query = query.eq('sub_category_id', subCategoryId);
+      // Prüfen ob diese Sub noch Kinder hat
+      final children = await fetchSubCategories(subCategoryId);
+      if (children.isNotEmpty) {
+        // Items aller Kinder sammeln
+        final allItems = <GameItem>[];
+        for (final child in children) {
+          final childItems = await _fetchItemsForSub(
+              categoryId: categoryId, subCategoryId: child.id);
+          allItems.addAll(childItems);
+        }
+        // Auch direkte Items dieser Sub
+        final direct = await _fetchItemsForSub(
+            categoryId: categoryId, subCategoryId: subCategoryId);
+        allItems.addAll(direct);
+        // Deduplizieren
+        final seen = <String>{};
+        return allItems.where((i) => seen.add(i.id)).toList();
+      }
+      return _fetchItemsForSub(
+          categoryId: categoryId, subCategoryId: subCategoryId);
     }
+    // Keine Sub → alle Items der Hauptkategorie
+    final data = await _client
+        .from('items')
+        .select()
+        .eq('category_id', categoryId)
+        .order('name');
+    return (data as List)
+        .map((e) => GameItem.fromMap(e as Map<String, dynamic>))
+        .toList();
+  }
 
-    final data = await query.order('name');
+  Future<List<GameItem>> _fetchItemsForSub({
+    required String categoryId,
+    required String subCategoryId,
+  }) async {
+    final data = await _client
+        .from('items')
+        .select()
+        .eq('category_id', categoryId)
+        .eq('sub_category_id', subCategoryId)
+        .order('name');
     return (data as List)
         .map((e) => GameItem.fromMap(e as Map<String, dynamic>))
         .toList();
@@ -61,8 +96,6 @@ class CategoryService {
         .map((e) => GameItem.fromMap(e as Map<String, dynamic>))
         .toList();
   }
-
-  // ── Custom Kategorien ──────────────────────────────────────────────────────
 
   Future<Category> createCustomCategory({
     required String name,

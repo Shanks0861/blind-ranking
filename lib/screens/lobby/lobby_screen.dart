@@ -28,11 +28,14 @@ class LobbyScreen extends StatefulWidget {
 class _LobbyScreenState extends State<LobbyScreen> {
   late Lobby _lobby;
   List<LobbyPlayer> _players = [];
-  List<Category> _categories = [];
-  List<SubCategory> _subCategories = [];
 
-  Category? _selectedCategory;
-  SubCategory? _selectedSubCategory;
+  List<Category> _level0 = [];
+  List<SubCategory> _level1 = []; // FIX: SubCategory nicht Category
+  List<SubCategory> _level2 = []; // FIX: SubCategory nicht Category
+
+  Category? _selected0;
+  SubCategory? _selected1; // FIX
+  SubCategory? _selected2; // FIX
   ListSize _selectedListSize = ListSize.top10;
 
   final _categoryService = CategoryService();
@@ -42,41 +45,74 @@ class _LobbyScreenState extends State<LobbyScreen> {
 
   bool get isHost => _lobby.hostId == widget.currentUser.id;
 
+  String? get _activeCategoryId => _selected0?.id;
+  String? get _activeSubCategoryId => _selected2?.id ?? _selected1?.id;
+
+  String get _selectionLabel {
+    if (_selected0 == null) return '';
+    if (_selected1 == null) return _selected0!.name;
+    if (_selected2 == null) return '${_selected0!.name} › ${_selected1!.name}';
+    return '${_selected0!.name} › ${_selected1!.name} › ${_selected2!.name}';
+  }
+
   @override
   void initState() {
     super.initState();
     _lobby = widget.lobby;
     _selectedListSize = _lobby.listSize;
-    _loadCategories();
+    _loadLevel0();
   }
 
-  Future<void> _loadCategories() async {
+  Future<void> _loadLevel0() async {
     final cats = await _categoryService.fetchMainCategories();
-    setState(() => _categories = cats);
+    setState(() => _level0 = cats);
   }
 
-  Future<void> _onCategorySelected(Category? cat) async {
+  Future<void> _onLevel0Selected(Category? cat) async {
     if (cat == null) return;
     setState(() {
-      _selectedCategory = cat;
-      _selectedSubCategory = null;
-      _subCategories = [];
-      _lobby = _lobby.copyWith(categoryId: cat.id, subCategoryId: null);
+      _selected0 = cat;
+      _selected1 = null;
+      _selected2 = null;
+      _level1 = [];
+      _level2 = [];
     });
     await widget.lobbyService.updateLobbySettings(
       lobbyId: _lobby.id,
       categoryId: cat.id,
       subCategoryId: null,
+      clearSubCategory: true,
     );
     final subs = await _categoryService.fetchSubCategories(cat.id);
-    setState(() => _subCategories = subs);
+    setState(() => _level1 = subs);
   }
 
-  Future<void> _onSubCategorySelected(SubCategory? sub) async {
+  Future<void> _onLevel1Selected(SubCategory? sub) async {
+    // FIX: SubCategory
     setState(() {
-      _selectedSubCategory = sub;
-      _lobby = _lobby.copyWith(subCategoryId: sub?.id);
+      _selected1 = sub;
+      _selected2 = null;
+      _level2 = [];
     });
+    if (sub == null) {
+      await widget.lobbyService.updateLobbySettings(
+        lobbyId: _lobby.id,
+        subCategoryId: null,
+        clearSubCategory: true,
+      );
+      return;
+    }
+    await widget.lobbyService.updateLobbySettings(
+      lobbyId: _lobby.id,
+      subCategoryId: sub.id,
+    );
+    final subsubs = await _categoryService.fetchSubCategories(sub.id);
+    setState(() => _level2 = subsubs);
+  }
+
+  Future<void> _onLevel2Selected(SubCategory? sub) async {
+    // FIX: SubCategory
+    setState(() => _selected2 = sub);
     await widget.lobbyService.updateLobbySettings(
       lobbyId: _lobby.id,
       subCategoryId: sub?.id,
@@ -86,10 +122,7 @@ class _LobbyScreenState extends State<LobbyScreen> {
 
   Future<void> _onListSizeSelected(ListSize? size) async {
     if (size == null) return;
-    setState(() {
-      _selectedListSize = size;
-      _lobby = _lobby.copyWith(listSize: size);
-    });
+    setState(() => _selectedListSize = size);
     await widget.lobbyService.updateLobbySettings(
       lobbyId: _lobby.id,
       listSize: size,
@@ -97,20 +130,19 @@ class _LobbyScreenState extends State<LobbyScreen> {
   }
 
   Future<void> _startGame() async {
-    if (_selectedCategory == null) {
+    if (_activeCategoryId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Bitte wähle zuerst eine Kategorie'),
-          backgroundColor: Colors.red,
-        ),
+            content: Text('Bitte wähle zuerst eine Kategorie'),
+            backgroundColor: Colors.red),
       );
       return;
     }
     setState(() => _starting = true);
     try {
       final items = await _categoryService.fetchItems(
-        categoryId: _selectedCategory!.id,
-        subCategoryId: _selectedSubCategory?.id,
+        categoryId: _activeCategoryId!,
+        subCategoryId: _activeSubCategoryId,
       );
       if (items.length < 5) {
         if (mounted)
@@ -131,9 +163,8 @@ class _LobbyScreenState extends State<LobbyScreen> {
       if (mounted) _navigateToGame(session);
     } catch (e) {
       if (mounted)
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Fehler: $e')),
-        );
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Fehler: $e')));
     } finally {
       if (mounted) setState(() => _starting = false);
     }
@@ -161,32 +192,26 @@ class _LobbyScreenState extends State<LobbyScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        title: const Text('Lobby'),
-      ),
+          backgroundColor: Colors.transparent, title: const Text('Lobby')),
       body: StreamBuilder<List<LobbyPlayer>>(
         stream: widget.lobbyService.watchPlayers(_lobby.id),
         builder: (context, playersSnap) {
           _players = playersSnap.data ?? [];
-
           return StreamBuilder<Map<String, dynamic>?>(
             stream: widget.lobbyService.watchLobby(_lobby.id),
             builder: (context, lobbySnap) {
-              // Non-Host: Wenn Lobby auf "playing" springt → Game laden und navigieren
-              if (!isHost && lobbySnap.hasData && lobbySnap.data != null) {
-                final lobbyData = lobbySnap.data!;
-                if (lobbyData['status'] == 'playing' && !_navigating) {
-                  WidgetsBinding.instance.addPostFrameCallback((_) async {
-                    if (!mounted || _navigating) return;
-                    final session =
-                        await _gameService.fetchActiveSession(_lobby.id);
-                    if (session != null && mounted) {
-                      _navigateToGame(session);
-                    }
-                  });
-                }
+              if (!isHost &&
+                  lobbySnap.hasData &&
+                  lobbySnap.data != null &&
+                  lobbySnap.data!['status'] == 'playing' &&
+                  !_navigating) {
+                WidgetsBinding.instance.addPostFrameCallback((_) async {
+                  if (!mounted || _navigating) return;
+                  final session =
+                      await _gameService.fetchActiveSession(_lobby.id);
+                  if (session != null && mounted) _navigateToGame(session);
+                });
               }
-
               return SingleChildScrollView(
                 padding: const EdgeInsets.all(20),
                 child: Column(
@@ -205,7 +230,7 @@ class _LobbyScreenState extends State<LobbyScreen> {
                     if (isHost) ...[
                       _buildSettings(),
                       const SizedBox(height: 16),
-                      if (_selectedCategory != null)
+                      if (_selected0 != null)
                         Container(
                           width: double.infinity,
                           margin: const EdgeInsets.only(bottom: 12),
@@ -217,21 +242,17 @@ class _LobbyScreenState extends State<LobbyScreen> {
                             border: Border.all(
                                 color: AppColors.primary.withOpacity(0.3)),
                           ),
-                          child: Row(
-                            children: [
-                              const Icon(Icons.check_circle,
-                                  color: AppColors.primary, size: 18),
-                              const SizedBox(width: 8),
-                              Text(
-                                _selectedSubCategory != null
-                                    ? '${_selectedCategory!.name} › ${_selectedSubCategory!.name}'
-                                    : '${_selectedCategory!.name} › Alle',
-                                style: const TextStyle(
-                                    color: AppColors.primary,
-                                    fontWeight: FontWeight.w600),
-                              ),
-                            ],
-                          ),
+                          child: Row(children: [
+                            const Icon(Icons.check_circle,
+                                color: AppColors.primary, size: 18),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(_selectionLabel,
+                                  style: const TextStyle(
+                                      color: AppColors.primary,
+                                      fontWeight: FontWeight.w600)),
+                            ),
+                          ]),
                         ),
                       SizedBox(
                         width: double.infinity,
@@ -258,15 +279,12 @@ class _LobbyScreenState extends State<LobbyScreen> {
                           borderRadius: BorderRadius.circular(14),
                           border: Border.all(color: AppColors.border),
                         ),
-                        child: const Column(
-                          children: [
-                            CircularProgressIndicator(),
-                            SizedBox(height: 14),
-                            Text('Warte auf den Host…',
-                                style:
-                                    TextStyle(color: AppColors.textSecondary)),
-                          ],
-                        ),
+                        child: const Column(children: [
+                          CircularProgressIndicator(),
+                          SizedBox(height: 14),
+                          Text('Warte auf den Host…',
+                              style: TextStyle(color: AppColors.textSecondary)),
+                        ]),
                       ),
                   ],
                 ),
@@ -274,85 +292,6 @@ class _LobbyScreenState extends State<LobbyScreen> {
             },
           );
         },
-      ),
-    );
-  }
-
-  Widget _buildCodeCard() {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: AppColors.surfaceVariant,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: Column(
-        children: [
-          const Text('Lobby Code',
-              style: TextStyle(color: AppColors.textSecondary)),
-          const SizedBox(height: 8),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(
-                _lobby.code,
-                style: const TextStyle(
-                  color: AppColors.primary,
-                  fontSize: 36,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 8,
-                ),
-              ),
-              IconButton(
-                icon: const Icon(Icons.copy, color: AppColors.textSecondary),
-                onPressed: () {
-                  Clipboard.setData(ClipboardData(text: _lobby.code));
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Code kopiert!')),
-                  );
-                },
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildPlayerTile(LobbyPlayer player) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: Row(
-        children: [
-          CircleAvatar(
-            backgroundColor: AppColors.primary.withOpacity(0.2),
-            child: Text(player.displayName[0].toUpperCase(),
-                style: const TextStyle(color: AppColors.primary)),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(player.displayName,
-                style: const TextStyle(
-                    color: AppColors.textPrimary, fontWeight: FontWeight.w600)),
-          ),
-          if (player.isHost)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: AppColors.accent.withOpacity(0.2),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: const Text('Host',
-                  style: TextStyle(color: AppColors.accent, fontSize: 12)),
-            ),
-        ],
       ),
     );
   }
@@ -370,47 +309,70 @@ class _LobbyScreenState extends State<LobbyScreen> {
                     fontWeight: FontWeight.bold,
                     fontSize: 16)),
             const SizedBox(height: 16),
+
+            // Level 0 — Hauptkategorien (Category)
             DropdownButtonFormField<Category>(
               decoration: const InputDecoration(labelText: 'Kategorie wählen'),
-              value: _selectedCategory,
+              value: _selected0,
               hint: const Text('Kategorie wählen…',
                   style: TextStyle(color: AppColors.textSecondary)),
-              items: _categories
+              items: _level0
                   .map((c) => DropdownMenuItem(
-                        value: c,
-                        child: Text(c.name,
-                            style:
-                                const TextStyle(color: AppColors.textPrimary)),
-                      ))
+                      value: c,
+                      child: Text(c.name,
+                          style:
+                              const TextStyle(color: AppColors.textPrimary))))
                   .toList(),
-              onChanged: _onCategorySelected,
+              onChanged: _onLevel0Selected,
               dropdownColor: AppColors.surface,
-              style: const TextStyle(color: AppColors.textPrimary),
             ),
-            if (_subCategories.isNotEmpty) ...[
+
+            // Level 1 — Unterkategorien (SubCategory)
+            if (_level1.isNotEmpty) ...[
               const SizedBox(height: 12),
               DropdownButtonFormField<SubCategory?>(
                 decoration: const InputDecoration(
                     labelText: 'Unterkategorie (optional)'),
-                value: _selectedSubCategory,
+                value: _selected1,
                 items: [
                   const DropdownMenuItem<SubCategory?>(
-                    value: null,
-                    child: Text('Alle',
-                        style: TextStyle(color: AppColors.textPrimary)),
-                  ),
-                  ..._subCategories.map((s) => DropdownMenuItem<SubCategory?>(
-                        value: s,
-                        child: Text(s.name,
-                            style:
-                                const TextStyle(color: AppColors.textPrimary)),
-                      )),
+                      value: null,
+                      child: Text('Alle',
+                          style: TextStyle(color: AppColors.textPrimary))),
+                  ..._level1.map((s) => DropdownMenuItem<SubCategory?>(
+                      value: s,
+                      child: Text(s.name,
+                          style:
+                              const TextStyle(color: AppColors.textPrimary)))),
                 ],
-                onChanged: _onSubCategorySelected,
+                onChanged: _onLevel1Selected,
                 dropdownColor: AppColors.surface,
-                style: const TextStyle(color: AppColors.textPrimary),
               ),
             ],
+
+            // Level 2 — Unter-Unterkategorien (SubCategory)
+            if (_level2.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              DropdownButtonFormField<SubCategory?>(
+                decoration: const InputDecoration(
+                    labelText: 'Genauer eingrenzen (optional)'),
+                value: _selected2,
+                items: [
+                  const DropdownMenuItem<SubCategory?>(
+                      value: null,
+                      child: Text('Alle',
+                          style: TextStyle(color: AppColors.textPrimary))),
+                  ..._level2.map((s) => DropdownMenuItem<SubCategory?>(
+                      value: s,
+                      child: Text(s.name,
+                          style:
+                              const TextStyle(color: AppColors.textPrimary)))),
+                ],
+                onChanged: _onLevel2Selected,
+                dropdownColor: AppColors.surface,
+              ),
+            ],
+
             const SizedBox(height: 12),
             DropdownButtonFormField<ListSize>(
               decoration: const InputDecoration(labelText: 'Listen Größe'),
@@ -431,11 +393,78 @@ class _LobbyScreenState extends State<LobbyScreen> {
               ],
               onChanged: _onListSizeSelected,
               dropdownColor: AppColors.surface,
-              style: const TextStyle(color: AppColors.textPrimary),
             ),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildCodeCard() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceVariant,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(children: [
+        const Text('Lobby Code',
+            style: TextStyle(color: AppColors.textSecondary)),
+        const SizedBox(height: 8),
+        Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+          Text(_lobby.code,
+              style: const TextStyle(
+                  color: AppColors.primary,
+                  fontSize: 36,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 8)),
+          IconButton(
+            icon: const Icon(Icons.copy, color: AppColors.textSecondary),
+            onPressed: () {
+              Clipboard.setData(ClipboardData(text: _lobby.code));
+              ScaffoldMessenger.of(context)
+                  .showSnackBar(const SnackBar(content: Text('Code kopiert!')));
+            },
+          ),
+        ]),
+      ]),
+    );
+  }
+
+  Widget _buildPlayerTile(LobbyPlayer player) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Row(children: [
+        CircleAvatar(
+          backgroundColor: AppColors.primary.withOpacity(0.2),
+          child: Text(player.displayName[0].toUpperCase(),
+              style: const TextStyle(color: AppColors.primary)),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+            child: Text(player.displayName,
+                style: const TextStyle(
+                    color: AppColors.textPrimary,
+                    fontWeight: FontWeight.w600))),
+        if (player.isHost)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: AppColors.accent.withOpacity(0.2),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: const Text('Host',
+                style: TextStyle(color: AppColors.accent, fontSize: 12)),
+          ),
+      ]),
     );
   }
 }

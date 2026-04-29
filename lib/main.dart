@@ -7,20 +7,17 @@ import 'screens/auth/auth_screen.dart';
 import 'screens/lobby/home_screen.dart';
 import 'utils/app_theme.dart';
 
+const String supabaseUrl = 'YOUR_SUPABASE_URL';
+const String supabaseAnonKey = 'YOUR_SUPABASE_ANON_KEY';
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-
-  await Supabase.initialize(
-    url: AppConstants.supabaseUrl,
-    anonKey: AppConstants.supabaseAnonKey,
-  );
-
+  await Supabase.initialize(url: supabaseUrl, anonKey: supabaseAnonKey);
   runApp(const BlindRankingApp());
 }
 
 class BlindRankingApp extends StatelessWidget {
   const BlindRankingApp({super.key});
-
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
@@ -34,7 +31,6 @@ class BlindRankingApp extends StatelessWidget {
 
 class RootNavigator extends StatefulWidget {
   const RootNavigator({super.key});
-
   @override
   State<RootNavigator> createState() => _RootNavigatorState();
 }
@@ -53,19 +49,31 @@ class _RootNavigatorState extends State<RootNavigator> {
   }
 
   Future<void> _checkAuth() async {
-    final user = await _authService.fetchCurrentUser();
-    setState(() {
-      _user = user;
-      _checking = false;
-    });
+    // Timeout damit die App nie ewig lädt
+    try {
+      final user = await _authService
+          .fetchCurrentUser()
+          .timeout(const Duration(seconds: 5));
+      if (mounted)
+        setState(() {
+          _user = user;
+          _checking = false;
+        });
+    } catch (_) {
+      if (mounted)
+        setState(() {
+          _user = null;
+          _checking = false;
+        });
+    }
   }
 
   void _onAuthChange(AuthState state) async {
     if (state.event == AuthChangeEvent.signedIn) {
       final user = await _authService.fetchCurrentUser();
-      setState(() => _user = user);
+      if (mounted) setState(() => _user = user);
     } else if (state.event == AuthChangeEvent.signedOut) {
-      setState(() => _user = null);
+      if (mounted) setState(() => _user = null);
     }
   }
 
@@ -73,27 +81,27 @@ class _RootNavigatorState extends State<RootNavigator> {
   Widget build(BuildContext context) {
     if (_checking) {
       return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
+        backgroundColor: Color(0xFF0F0F1A),
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text('Blind Ranking',
+                  style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 28,
+                      fontWeight: FontWeight.bold)),
+              SizedBox(height: 24),
+              CircularProgressIndicator(color: Color(0xFF6C63FF)),
+            ],
+          ),
+        ),
       );
     }
-
     if (_user == null) {
-      return AuthScreen(
-        authService: _authService,
-        onAuthenticated: _checkAuth,
-      );
+      return AuthScreen(authService: _authService, onAuthenticated: _checkAuth);
     }
-
     return HomeScreen(
-      user: _user!,
-      lobbyService: _lobbyService,
-      authService: _authService,
-    );
+        user: _user!, lobbyService: _lobbyService, authService: _authService);
   }
-}
-
-class AppConstants {
-  static const String supabaseUrl = 'https://dadfpdkvivsvxmdrwjqc.supabase.co';
-  static const String supabaseAnonKey =
-      'sb_publishable_0TuuuvLoHqV0o087xFPhYg_dm2pCPBS';
 }

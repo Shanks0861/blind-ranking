@@ -6,16 +6,16 @@ import '../models/lobby.dart';
 class GameService {
   final SupabaseClient _client = Supabase.instance.client;
 
-  // ── Session starten ────────────────────────────────────────────────────────
-
   Future<GameSession> startSession({
     required String lobbyId,
     required List<String> allItemIds,
     required ListSize listSize,
   }) async {
     final count = _itemCountForSize(listSize);
-    final shuffled = List<String>.from(allItemIds)..shuffle(Random.secure());
-    final queue = shuffled.take(count).toList();
+    // Deduplizieren → kein Item zweimal im Spiel
+    final unique = allItemIds.toSet().toList();
+    unique.shuffle(Random.secure());
+    final queue = unique.take(count).toList();
 
     final data = await _client
         .from('game_sessions')
@@ -31,8 +31,6 @@ class GameService {
     return GameSession.fromMap(data);
   }
 
-  // ── Session abrufen ────────────────────────────────────────────────────────
-
   Future<GameSession?> fetchActiveSession(String lobbyId) async {
     final data = await _client
         .from('game_sessions')
@@ -44,15 +42,12 @@ class GameService {
     return data != null ? GameSession.fromMap(data) : null;
   }
 
-  // ── Ranking speichern ──────────────────────────────────────────────────────
-
   Future<PlayerRanking> saveRanking({
     required String sessionId,
     required String userId,
     required String displayName,
     required List<RankingEntry> entries,
   }) async {
-    // Prüfen ob schon vorhanden → upsert
     final existing = await _client
         .from('player_rankings')
         .select()
@@ -83,11 +78,8 @@ class GameService {
           .select()
           .single();
     }
-
     return PlayerRanking.fromMap(data);
   }
-
-  // ── Phase wechseln ─────────────────────────────────────────────────────────
 
   Future<void> advancePhase({
     required String sessionId,
@@ -106,8 +98,6 @@ class GameService {
     }).eq('id', sessionId);
   }
 
-  // ── Voting ─────────────────────────────────────────────────────────────────
-
   Future<void> submitVote({
     required String sessionId,
     required String voterId,
@@ -123,16 +113,13 @@ class GameService {
   Future<Map<String, int>> fetchVoteResults(String sessionId) async {
     final data =
         await _client.from('votes').select().eq('session_id', sessionId);
-
     final results = <String, int>{};
     for (final row in data as List) {
-      final userId = row['voted_for_user_id'] as String;
-      results[userId] = (results[userId] ?? 0) + 1;
+      final uid = row['voted_for_user_id'] as String;
+      results[uid] = (results[uid] ?? 0) + 1;
     }
     return results;
   }
-
-  // ── Rankings abrufen ───────────────────────────────────────────────────────
 
   Future<List<PlayerRanking>> fetchAllRankings(String sessionId) async {
     final data = await _client
@@ -143,20 +130,6 @@ class GameService {
         .map((e) => PlayerRanking.fromMap(e as Map<String, dynamic>))
         .toList();
   }
-
-  Future<bool> allPlayersConfirmed({
-    required String sessionId,
-    required int playerCount,
-  }) async {
-    final data = await _client
-        .from('player_rankings')
-        .select('id')
-        .eq('session_id', sessionId)
-        .eq('is_confirmed', true);
-    return (data as List).length >= playerCount;
-  }
-
-  // ── Realtime Subscriptions ─────────────────────────────────────────────────
 
   Stream<Map<String, dynamic>?> watchSession(String sessionId) {
     return _client
@@ -178,8 +151,6 @@ class GameService {
         .stream(primaryKey: ['id']).eq('session_id', sessionId);
   }
 
-  // ── Helper ─────────────────────────────────────────────────────────────────
-
   int _itemCountForSize(ListSize size) {
     switch (size) {
       case ListSize.top5:
@@ -187,7 +158,7 @@ class GameService {
       case ListSize.top10:
         return 10;
       case ListSize.tierList:
-        return 15; // S A B C D F → flexible
+        return 15;
     }
   }
 }
