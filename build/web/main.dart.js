@@ -7953,7 +7953,7 @@ var $async$aCg=A.u(function(a,b){if(a===1)return A.p(b,r)
 for(;;)switch(s){case 0:if($.a_==null)A.aEW()
 $.a_.toString
 s=2
-return A.m(A.am6("YOUR_SUPABASE_ANON_KEY","YOUR_SUPABASE_URL"),$async$aCg)
+return A.m(A.am6("sb_publishable_0TuuuvLoHqV0o087xFPhYg_dm2pCPBS","https://dadfpdkvivsvxmdrwjqc.supabase.co"),$async$aCg)
 case 2:if($.a_==null)A.aEW()
 q=$.a_
 q.toString
