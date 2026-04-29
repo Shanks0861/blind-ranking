@@ -7,8 +7,8 @@ import 'screens/auth/auth_screen.dart';
 import 'screens/lobby/home_screen.dart';
 import 'utils/app_theme.dart';
 
-const String supabaseUrl = 'YOUR_SUPABASE_URL';
-const String supabaseAnonKey = 'YOUR_SUPABASE_ANON_KEY';
+const String supabaseUrl = 'https://dadfpdkvivsvxmdrwjqc.supabase.co';
+const String supabaseAnonKey = 'sb_publishable_0TuuuvLoHqV0o087xFPhYg_dm2pCPBS';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
