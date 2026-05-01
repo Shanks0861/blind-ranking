@@ -46,16 +46,10 @@ class _GameScreenState extends State<GameScreen> {
 
   bool get isHost => widget.lobby.hostId == widget.currentUser.id;
   bool get isTierList => widget.lobby.listSize == ListSize.tierList;
-  int get slotCount {
-    switch (widget.lobby.listSize) {
-      case ListSize.top5:
-        return 5;
-      case ListSize.top10:
-        return 10;
-      case ListSize.tierList:
-        return 6;
-    }
-  }
+
+  // FIX: slotCount direkt von session.itemQueue.length lesen
+  // Das ist die echte Anzahl Items die gespielt werden
+  int get slotCount => widget.session.itemQueue.length;
 
   @override
   void initState() {
@@ -271,7 +265,10 @@ class _GameScreenState extends State<GameScreen> {
       ),
       child: Row(
         children: [
-          _itemImage(_currentItem, size: 52),
+          CharacterImage(
+              storedUrl: _currentItem?.imageUrl,
+              characterName: _currentItem?.name ?? '',
+              size: 52),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
@@ -320,9 +317,7 @@ class _GameScreenState extends State<GameScreen> {
         return GestureDetector(
           onTap: (_confirmed || placed != null)
               ? null
-              : () {
-                  setState(() => _selectedSlot = pos);
-                },
+              : () => setState(() => _selectedSlot = pos),
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 180),
             margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
@@ -332,9 +327,8 @@ class _GameScreenState extends State<GameScreen> {
                   : AppColors.surfaceVariant,
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
-                color: isSelected ? color : AppColors.border,
-                width: isSelected ? 2 : 1,
-              ),
+                  color: isSelected ? color : AppColors.border,
+                  width: isSelected ? 2 : 1),
             ),
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -352,7 +346,10 @@ class _GameScreenState extends State<GameScreen> {
                   ),
                   const SizedBox(width: 12),
                   if (placed != null) ...[
-                    _itemImage(placed, size: 38),
+                    CharacterImage(
+                        storedUrl: placed.imageUrl,
+                        characterName: placed.name,
+                        size: 38),
                     const SizedBox(width: 10),
                     Expanded(
                       child: Text(placed.name,
@@ -394,9 +391,7 @@ class _GameScreenState extends State<GameScreen> {
         return GestureDetector(
           onTap: (_confirmed || placed != null)
               ? null
-              : () {
-                  setState(() => _selectedSlot = pos);
-                },
+              : () => setState(() => _selectedSlot = pos),
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 180),
             margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
@@ -425,7 +420,10 @@ class _GameScreenState extends State<GameScreen> {
                 ),
                 const SizedBox(width: 12),
                 if (placed != null) ...[
-                  _itemImage(placed, size: 38),
+                  CharacterImage(
+                      storedUrl: placed.imageUrl,
+                      characterName: placed.name,
+                      size: 38),
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text(placed.name,
@@ -450,24 +448,6 @@ class _GameScreenState extends State<GameScreen> {
           ),
         );
       },
-    );
-  }
-
-  Widget _itemImage(GameItem? item, {required double size}) {
-    if (item == null) {
-      return Container(
-        width: size,
-        height: size,
-        decoration: BoxDecoration(
-            color: AppColors.surface, borderRadius: BorderRadius.circular(8)),
-        child: const Icon(Icons.image_not_supported,
-            color: AppColors.textSecondary, size: 20),
-      );
-    }
-    return CharacterImage(
-      storedUrl: item.imageUrl,
-      characterName: item.name,
-      size: size,
     );
   }
 }
