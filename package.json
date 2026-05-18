@@ -1,0 +1,28 @@
+{
+  "name": "blind_ranking",
+  "version": "1.0.0",
+  "description": "1. https://console.firebase.google.com → Neues Projekt → \"blind-ranking\" 2. Authentication aktivieren: Email/Passwort + Anonymous 3. Firestore Database erstellen (Production mode)",
+  "main": "seed_firestore.js",
+  "directories": {
+    "lib": "lib",
+    "test": "test"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Shanks0861/blind-ranking.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/Shanks0861/blind-ranking/issues"
+  },
+  "homepage": "https://github.com/Shanks0861/blind-ranking#readme",
+  "dependencies": {
+    "firebase-admin": "^13.10.0"
+  }
+}

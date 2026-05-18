@@ -1,18 +1,17 @@
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'models/app_user.dart';
 import 'services/auth_service.dart';
 import 'services/lobby_service.dart';
 import 'screens/auth/auth_screen.dart';
 import 'screens/lobby/home_screen.dart';
 import 'utils/app_theme.dart';
-
-const String supabaseUrl = 'https://dadfpdkvivsvxmdrwjqc.supabase.co';
-const String supabaseAnonKey = 'sb_publishable_0TuuuvLoHqV0o087xFPhYg_dm2pCPBS';
+import 'firebase_options.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Supabase.initialize(url: supabaseUrl, anonKey: supabaseAnonKey);
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   runApp(const BlindRankingApp());
 }
 
@@ -44,37 +43,14 @@ class _RootNavigatorState extends State<RootNavigator> {
   @override
   void initState() {
     super.initState();
-    _checkAuth();
-    _authService.authStateChanges.listen(_onAuthChange);
-  }
-
-  Future<void> _checkAuth() async {
-    // Timeout damit die App nie ewig lädt
-    try {
-      final user = await _authService
-          .fetchCurrentUser()
-          .timeout(const Duration(seconds: 5));
-      if (mounted)
-        setState(() {
-          _user = user;
-          _checking = false;
-        });
-    } catch (_) {
-      if (mounted)
-        setState(() {
-          _user = null;
-          _checking = false;
-        });
-    }
-  }
-
-  void _onAuthChange(AuthState state) async {
-    if (state.event == AuthChangeEvent.signedIn) {
-      final user = await _authService.fetchCurrentUser();
-      if (mounted) setState(() => _user = user);
-    } else if (state.event == AuthChangeEvent.signedOut) {
-      if (mounted) setState(() => _user = null);
-    }
+    FirebaseAuth.instance.authStateChanges().listen((firebaseUser) async {
+      if (firebaseUser == null) {
+        if (mounted) setState(() { _user = null; _checking = false; });
+      } else {
+        final user = await _authService.fetchCurrentUser(firebaseUser);
+        if (mounted) setState(() { _user = user; _checking = false; });
+      }
+    });
   }
 
   @override
@@ -86,11 +62,7 @@ class _RootNavigatorState extends State<RootNavigator> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Text('Blind Ranking',
-                  style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 28,
-                      fontWeight: FontWeight.bold)),
+              Text('Blind Ranking', style: TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold)),
               SizedBox(height: 24),
               CircularProgressIndicator(color: Color(0xFF6C63FF)),
             ],
@@ -99,9 +71,8 @@ class _RootNavigatorState extends State<RootNavigator> {
       );
     }
     if (_user == null) {
-      return AuthScreen(authService: _authService, onAuthenticated: _checkAuth);
+      return AuthScreen(authService: _authService, onAuthenticated: () {});
     }
-    return HomeScreen(
-        user: _user!, lobbyService: _lobbyService, authService: _authService);
+    return HomeScreen(user: _user!, lobbyService: _lobbyService, authService: _authService);
   }
 }

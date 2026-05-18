@@ -1,14 +1,13 @@
 import 'package:flutter/material.dart';
 import '../../models/app_user.dart';
 import '../../models/lobby.dart';
-import '../../models/game_session.dart';
 import '../../models/category.dart';
 import '../../services/game_service.dart';
 import '../../services/category_service.dart';
 import '../../services/lobby_service.dart';
 import '../../utils/app_theme.dart';
-import '../../widgets/item_reveal_dialog.dart';
 import '../../widgets/character_image.dart';
+import '../../widgets/item_reveal_dialog.dart';
 import '../final/final_screen.dart';
 
 const List<String> kTiers = ['S', 'A', 'B', 'C', 'D', 'F'];
@@ -46,10 +45,7 @@ class _GameScreenState extends State<GameScreen> {
 
   bool get isHost => widget.lobby.hostId == widget.currentUser.id;
   bool get isTierList => widget.lobby.listSize == ListSize.tierList;
-
-  // FIX: slotCount direkt von session.itemQueue.length lesen
-  // Das ist die echte Anzahl Items die gespielt werden
-  int get slotCount => widget.session.itemQueue.length;
+  int get slotCount => _session.itemQueue.length;
 
   @override
   void initState() {
@@ -106,46 +102,35 @@ class _GameScreenState extends State<GameScreen> {
 
   Future<void> _handleHostNext() async {
     if (_session.isLastItem) {
-      await widget.gameService.advancePhase(
-        sessionId: _session.id,
-        newPhase: GamePhase.finalPhase,
-      );
+      await widget.gameService.advancePhase(sessionId: _session.id, newPhase: GamePhase.finalPhase);
     } else {
-      await widget.gameService.nextItem(
-        _session.id,
-        _session.currentItemIndex + 1,
-      );
+      await widget.gameService.nextItem(_session.id, _session.currentItemIndex + 1);
     }
   }
 
   void _goToFinal(GameSession session) {
     if (_navigating) return;
     _navigating = true;
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(
-        builder: (_) => FinalScreen(
-          session: session,
-          currentUser: widget.currentUser,
-          gameService: widget.gameService,
-          categoryService: widget.categoryService,
-          lobbyService: widget.lobbyService,
-          lobby: widget.lobby,
-          isHost: isHost,
-          myPlacedItems: _placedItems,
-        ),
+    Navigator.pushReplacement(context, MaterialPageRoute(
+      builder: (_) => FinalScreen(
+        session: session,
+        currentUser: widget.currentUser,
+        gameService: widget.gameService,
+        categoryService: widget.categoryService,
+        lobbyService: widget.lobbyService,
+        lobby: widget.lobby,
+        isHost: isHost,
+        myPlacedItems: _placedItems,
       ),
-    );
+    ));
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: Colors.transparent,
         automaticallyImplyLeading: false,
-        title: Text(
-            'Runde ${_session.currentItemIndex + 1} / ${_session.itemQueue.length}'),
+        title: Text('Runde ${_session.currentItemIndex + 1} / ${_session.itemQueue.length}'),
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(4),
           child: LinearProgressIndicator(
@@ -159,7 +144,7 @@ class _GameScreenState extends State<GameScreen> {
         stream: widget.gameService.watchSession(_session.id),
         builder: (context, snapshot) {
           if (snapshot.hasData && snapshot.data != null) {
-            final updated = GameSession.fromMap(snapshot.data!);
+            final updated = GameSession.fromMap(_session.id, snapshot.data!);
             if (updated.currentItemIndex != _session.currentItemIndex) {
               WidgetsBinding.instance.addPostFrameCallback((_) {
                 if (!mounted) return;
@@ -176,25 +161,18 @@ class _GameScreenState extends State<GameScreen> {
 
           return Column(
             children: [
-              if (_currentItem != null && !_revealShowing)
-                _buildCurrentItemBar(),
-              Expanded(
-                child: isTierList ? _buildTierList() : _buildRankingList(),
-              ),
+              if (_currentItem != null && !_revealShowing) _buildCurrentItemBar(),
+              Expanded(child: isTierList ? _buildTierList() : _buildRankingList()),
               if (!_confirmed && !_revealShowing)
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
                   child: SizedBox(
-                    width: double.infinity,
-                    height: 50,
+                    width: double.infinity, height: 50,
                     child: ElevatedButton(
-                      onPressed:
-                          _selectedSlot != null ? _confirmSelection : null,
-                      child: Text(
-                        _selectedSlot != null
-                            ? 'Auf Platz ${isTierList ? kTiers[_selectedSlot! - 1] : _selectedSlot} bestätigen'
-                            : 'Slot auswählen',
-                      ),
+                      onPressed: _selectedSlot != null ? _confirmSelection : null,
+                      child: Text(_selectedSlot != null
+                          ? 'Auf Platz ${isTierList ? kTiers[_selectedSlot! - 1] : _selectedSlot} bestätigen'
+                          : 'Slot auswählen'),
                     ),
                   ),
                 ),
@@ -214,8 +192,7 @@ class _GameScreenState extends State<GameScreen> {
                       children: [
                         Icon(Icons.check_circle, color: Colors.green, size: 18),
                         SizedBox(width: 8),
-                        Text('Platziert! Warte auf andere…',
-                            style: TextStyle(color: Colors.green)),
+                        Text('Platziert! Warte auf andere…', style: TextStyle(color: Colors.green)),
                       ],
                     ),
                   ),
@@ -224,28 +201,19 @@ class _GameScreenState extends State<GameScreen> {
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
                   child: SizedBox(
-                    width: double.infinity,
-                    height: 48,
+                    width: double.infinity, height: 48,
                     child: OutlinedButton.icon(
                       onPressed: _handleHostNext,
-                      icon: Icon(
-                          _session.isLastItem ? Icons.flag : Icons.skip_next),
-                      label: Text(_session.isLastItem
-                          ? 'Finale starten'
-                          : 'Nächstes Item'),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: AppColors.accent,
-                        side: const BorderSide(color: AppColors.accent),
-                      ),
+                      icon: Icon(_session.isLastItem ? Icons.flag : Icons.skip_next),
+                      label: Text(_session.isLastItem ? 'Finale starten' : 'Nächstes Item'),
+                      style: OutlinedButton.styleFrom(foregroundColor: AppColors.accent, side: const BorderSide(color: AppColors.accent)),
                     ),
                   ),
                 ),
               if (!isHost && _confirmed)
                 const Padding(
                   padding: EdgeInsets.fromLTRB(16, 0, 16, 16),
-                  child: Text('Warte bis der Host weitermacht…',
-                      style: TextStyle(color: AppColors.textSecondary),
-                      textAlign: TextAlign.center),
+                  child: Text('Warte bis der Host weitermacht…', style: TextStyle(color: AppColors.textSecondary), textAlign: TextAlign.center),
                 ),
             ],
           );
@@ -265,40 +233,20 @@ class _GameScreenState extends State<GameScreen> {
       ),
       child: Row(
         children: [
-          CharacterImage(
-              storedUrl: _currentItem?.imageUrl,
-              characterName: _currentItem?.name ?? '',
-              size: 52),
+          CharacterImage(storedUrl: _currentItem?.imageUrl, characterName: _currentItem?.name ?? '', size: 52),
           const SizedBox(width: 12),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('Jetzt platzieren',
-                    style: TextStyle(
-                        color: AppColors.textSecondary, fontSize: 12)),
-                Text(_currentItem!.name,
-                    style: const TextStyle(
-                        color: AppColors.textPrimary,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 17)),
-              ],
-            ),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const Text('Jetzt platzieren', style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+              Text(_currentItem!.name, style: const TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.bold, fontSize: 17)),
+            ]),
           ),
           if (_selectedSlot != null)
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(
-                color: AppColors.primary.withOpacity(0.2),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Text(
-                isTierList ? kTiers[_selectedSlot! - 1] : '#$_selectedSlot',
-                style: const TextStyle(
-                    color: AppColors.primary,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16),
-              ),
+              decoration: BoxDecoration(color: AppColors.primary.withOpacity(0.2), borderRadius: BorderRadius.circular(8)),
+              child: Text(isTierList ? kTiers[_selectedSlot! - 1] : '#$_selectedSlot',
+                  style: const TextStyle(color: AppColors.primary, fontWeight: FontWeight.bold, fontSize: 16)),
             ),
         ],
       ),
@@ -315,60 +263,35 @@ class _GameScreenState extends State<GameScreen> {
         final isSelected = _selectedSlot == pos;
         final color = AppColors.rankColor(pos);
         return GestureDetector(
-          onTap: (_confirmed || placed != null)
-              ? null
-              : () => setState(() => _selectedSlot = pos),
+          onTap: (_confirmed || placed != null) ? null : () => setState(() => _selectedSlot = pos),
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 180),
             margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
             decoration: BoxDecoration(
-              color: isSelected
-                  ? color.withOpacity(0.15)
-                  : AppColors.surfaceVariant,
+              color: isSelected ? color.withOpacity(0.15) : AppColors.surfaceVariant,
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                  color: isSelected ? color : AppColors.border,
-                  width: isSelected ? 2 : 1),
+              border: Border.all(color: isSelected ? color : AppColors.border, width: isSelected ? 2 : 1),
             ),
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               child: Row(
                 children: [
                   Container(
-                    width: 34,
-                    height: 34,
-                    decoration: BoxDecoration(
-                        color: color, borderRadius: BorderRadius.circular(8)),
+                    width: 34, height: 34,
+                    decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(8)),
                     alignment: Alignment.center,
-                    child: Text('$pos',
-                        style: const TextStyle(
-                            color: Colors.white, fontWeight: FontWeight.bold)),
+                    child: Text('$pos', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                   ),
                   const SizedBox(width: 12),
                   if (placed != null) ...[
-                    CharacterImage(
-                        storedUrl: placed.imageUrl,
-                        characterName: placed.name,
-                        size: 38),
+                    CharacterImage(storedUrl: placed.imageUrl, characterName: placed.name, size: 38),
                     const SizedBox(width: 10),
-                    Expanded(
-                      child: Text(placed.name,
-                          style: const TextStyle(
-                              color: AppColors.textPrimary,
-                              fontWeight: FontWeight.w600)),
-                    ),
+                    Expanded(child: Text(placed.name, style: const TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w600))),
                   ] else
-                    Expanded(
-                      child: Text(
-                        isSelected ? '← Hier platzieren' : 'Leer',
-                        style: TextStyle(
-                          color: isSelected
-                              ? AppColors.primary
-                              : AppColors.textSecondary.withOpacity(0.5),
-                          fontStyle: FontStyle.italic,
-                        ),
-                      ),
-                    ),
+                    Expanded(child: Text(
+                      isSelected ? '← Hier platzieren' : 'Leer',
+                      style: TextStyle(color: isSelected ? AppColors.primary : AppColors.textSecondary.withOpacity(0.5), fontStyle: FontStyle.italic),
+                    )),
                 ],
               ),
             ),
@@ -389,60 +312,29 @@ class _GameScreenState extends State<GameScreen> {
         final isSelected = _selectedSlot == pos;
         final color = AppColors.tierColors[tier] ?? Colors.grey;
         return GestureDetector(
-          onTap: (_confirmed || placed != null)
-              ? null
-              : () => setState(() => _selectedSlot = pos),
+          onTap: (_confirmed || placed != null) ? null : () => setState(() => _selectedSlot = pos),
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 180),
             margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
-            decoration: BoxDecoration(
-              border: Border.all(
-                  color: isSelected ? color : AppColors.border,
-                  width: isSelected ? 2 : 1),
-              borderRadius: BorderRadius.circular(10),
-            ),
+            decoration: BoxDecoration(border: Border.all(color: isSelected ? color : AppColors.border, width: isSelected ? 2 : 1), borderRadius: BorderRadius.circular(10)),
             child: Row(
               children: [
                 Container(
-                  width: 52,
-                  height: 58,
-                  decoration: BoxDecoration(
-                    color: color,
-                    borderRadius:
-                        const BorderRadius.horizontal(left: Radius.circular(8)),
-                  ),
+                  width: 52, height: 58,
+                  decoration: BoxDecoration(color: color, borderRadius: const BorderRadius.horizontal(left: Radius.circular(8))),
                   alignment: Alignment.center,
-                  child: Text(tier,
-                      style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 20)),
+                  child: Text(tier, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 20)),
                 ),
                 const SizedBox(width: 12),
                 if (placed != null) ...[
-                  CharacterImage(
-                      storedUrl: placed.imageUrl,
-                      characterName: placed.name,
-                      size: 38),
+                  CharacterImage(storedUrl: placed.imageUrl, characterName: placed.name, size: 38),
                   const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(placed.name,
-                        style: const TextStyle(
-                            color: AppColors.textPrimary,
-                            fontWeight: FontWeight.w600)),
-                  ),
+                  Expanded(child: Text(placed.name, style: const TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.w600))),
                 ] else
-                  Expanded(
-                    child: Text(
-                      isSelected ? '← Hier platzieren' : 'Leer',
-                      style: TextStyle(
-                        color: isSelected
-                            ? AppColors.primary
-                            : AppColors.textSecondary.withOpacity(0.5),
-                        fontStyle: FontStyle.italic,
-                      ),
-                    ),
-                  ),
+                  Expanded(child: Text(
+                    isSelected ? '← Hier platzieren' : 'Leer',
+                    style: TextStyle(color: isSelected ? AppColors.primary : AppColors.textSecondary.withOpacity(0.5), fontStyle: FontStyle.italic),
+                  )),
               ],
             ),
           ),

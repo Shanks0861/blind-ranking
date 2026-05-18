@@ -1,155 +1,82 @@
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/category.dart';
 
 class CategoryService {
-  final SupabaseClient _client = Supabase.instance.client;
+  final FirebaseFirestore _db = FirebaseFirestore.instance;
 
-  // Nur echte Hauptkategorien (parent_id IS NULL)
   Future<List<Category>> fetchMainCategories() async {
-    final data = await _client
-        .from('categories')
-        .select()
-        .isFilter('parent_id', null)
-        .order('name');
-    return (data as List)
-        .map((e) => Category.fromMap(e as Map<String, dynamic>))
-        .toList();
+    final snap = await _db.collection('categories').where('parent_id', isNull: true).orderBy('name').get();
+    return snap.docs.map((d) => Category.fromMap(d.id, d.data())).toList();
   }
 
-  // Unterkategorien einer Kategorie (egal welche Ebene)
   Future<List<SubCategory>> fetchSubCategories(String categoryId) async {
-    final data = await _client
-        .from('categories')
-        .select()
-        .eq('parent_id', categoryId)
-        .order('name');
-    return (data as List)
-        .map((e) => SubCategory.fromMap(e as Map<String, dynamic>))
-        .toList();
+    final snap = await _db.collection('categories').where('parent_id', isEqualTo: categoryId).orderBy('name').get();
+    return snap.docs.map((d) => SubCategory.fromMap(d.id, d.data())).toList();
   }
 
-  // Items laden — unterstützt jetzt auch Unter-Unterkategorien:
-  // Wenn subCategoryId gesetzt ist, werden Items dieser Sub geladen.
-  // Falls die Sub selbst noch Kinder hat, werden deren Items auch inkludiert.
-  Future<List<GameItem>> fetchItems({
-    required String categoryId,
-    String? subCategoryId,
-  }) async {
+  Future<List<GameItem>> fetchItems({required String categoryId, String? subCategoryId}) async {
     if (subCategoryId != null) {
-      // Prüfen ob diese Sub noch Kinder hat
       final children = await fetchSubCategories(subCategoryId);
       if (children.isNotEmpty) {
-        // Items aller Kinder sammeln
-        final allItems = <GameItem>[];
+        final all = <GameItem>[];
         for (final child in children) {
-          final childItems = await _fetchItemsForSub(
-              categoryId: categoryId, subCategoryId: child.id);
-          allItems.addAll(childItems);
+          all.addAll(await _fetchItemsForSub(categoryId: categoryId, subCategoryId: child.id));
         }
-        // Auch direkte Items dieser Sub
-        final direct = await _fetchItemsForSub(
-            categoryId: categoryId, subCategoryId: subCategoryId);
-        allItems.addAll(direct);
-        // Deduplizieren
+        all.addAll(await _fetchItemsForSub(categoryId: categoryId, subCategoryId: subCategoryId));
         final seen = <String>{};
-        return allItems.where((i) => seen.add(i.id)).toList();
+        return all.where((i) => seen.add(i.id)).toList();
       }
-      return _fetchItemsForSub(
-          categoryId: categoryId, subCategoryId: subCategoryId);
+      return _fetchItemsForSub(categoryId: categoryId, subCategoryId: subCategoryId);
     }
-    // Keine Sub → alle Items der Hauptkategorie
-    final data = await _client
-        .from('items')
-        .select()
-        .eq('category_id', categoryId)
-        .order('name');
-    return (data as List)
-        .map((e) => GameItem.fromMap(e as Map<String, dynamic>))
-        .toList();
+    final snap = await _db.collection('items').where('category_id', isEqualTo: categoryId).orderBy('name').get();
+    return snap.docs.map((d) => GameItem.fromMap(d.id, d.data())).toList();
   }
 
-  Future<List<GameItem>> _fetchItemsForSub({
-    required String categoryId,
-    required String subCategoryId,
-  }) async {
-    final data = await _client
-        .from('items')
-        .select()
-        .eq('category_id', categoryId)
-        .eq('sub_category_id', subCategoryId)
-        .order('name');
-    return (data as List)
-        .map((e) => GameItem.fromMap(e as Map<String, dynamic>))
-        .toList();
+  Future<List<GameItem>> _fetchItemsForSub({required String categoryId, required String subCategoryId}) async {
+    final snap = await _db.collection('items').where('category_id', isEqualTo: categoryId).where('sub_category_id', isEqualTo: subCategoryId).orderBy('name').get();
+    return snap.docs.map((d) => GameItem.fromMap(d.id, d.data())).toList();
   }
 
   Future<GameItem?> fetchItemById(String id) async {
-    final data =
-        await _client.from('items').select().eq('id', id).maybeSingle();
-    return data != null ? GameItem.fromMap(data) : null;
+    final doc = await _db.collection('items').doc(id).get();
+    if (!doc.exists) return null;
+    return GameItem.fromMap(doc.id, doc.data()!);
   }
 
   Future<List<GameItem>> fetchItemsByIds(List<String> ids) async {
     if (ids.isEmpty) return [];
-    final data = await _client.from('items').select().inFilter('id', ids);
-    return (data as List)
-        .map((e) => GameItem.fromMap(e as Map<String, dynamic>))
-        .toList();
+    final chunks = <List<String>>[];
+    for (var i = 0; i < ids.length; i += 30) chunks.add(ids.sublist(i, i + 30 > ids.length ? ids.length : i + 30));
+    final all = <GameItem>[];
+    for (final chunk in chunks) {
+      final snap = await _db.collection('items').where(FieldPath.documentId, whereIn: chunk).get();
+      all.addAll(snap.docs.map((d) => GameItem.fromMap(d.id, d.data())));
+    }
+    return all;
   }
 
-  Future<Category> createCustomCategory({
-    required String name,
-    required String userId,
-    String? parentId,
-  }) async {
-    final data = await _client
-        .from('categories')
-        .insert({
-          'name': name,
-          'parent_id': parentId,
-          'created_by': userId,
-        })
-        .select()
-        .single();
-    return Category.fromMap(data);
+  Future<Category> createCustomCategory({required String name, required String userId, String? parentId}) async {
+    final ref = await _db.collection('categories').add({'name': name, 'parent_id': parentId, 'created_by': userId});
+    return Category(id: ref.id, name: name, parentId: parentId, createdBy: userId);
   }
 
-  Future<GameItem> addCustomItem({
-    required String name,
-    required String categoryId,
-    String? subCategoryId,
-    String? imageUrl,
-  }) async {
-    final data = await _client
-        .from('items')
-        .insert({
-          'name': name,
-          'category_id': categoryId,
-          'sub_category_id': subCategoryId,
-          'image_url': imageUrl,
-        })
-        .select()
-        .single();
-    return GameItem.fromMap(data);
+  Future<GameItem> addCustomItem({required String name, required String categoryId, String? subCategoryId, String? imageUrl}) async {
+    final ref = await _db.collection('items').add({'name': name, 'category_id': categoryId, 'sub_category_id': subCategoryId, 'image_url': imageUrl});
+    return GameItem(id: ref.id, name: name, categoryId: categoryId, subCategoryId: subCategoryId, imageUrl: imageUrl);
   }
 
   Future<List<Category>> fetchUserCategories(String userId) async {
-    final data = await _client
-        .from('categories')
-        .select()
-        .eq('created_by', userId)
-        .order('name');
-    return (data as List)
-        .map((e) => Category.fromMap(e as Map<String, dynamic>))
-        .toList();
+    final snap = await _db.collection('categories').where('created_by', isEqualTo: userId).orderBy('name').get();
+    return snap.docs.map((d) => Category.fromMap(d.id, d.data())).toList();
   }
 
   Future<void> deleteCustomCategory(String categoryId) async {
-    await _client.from('items').delete().eq('category_id', categoryId);
-    await _client.from('categories').delete().eq('id', categoryId);
+    final items = await _db.collection('items').where('category_id', isEqualTo: categoryId).get();
+    final batch = _db.batch();
+    for (final doc in items.docs) batch.delete(doc.reference);
+    batch.delete(_db.collection('categories').doc(categoryId));
+    await batch.commit();
   }
 
-  Future<void> deleteCustomItem(String itemId) async {
-    await _client.from('items').delete().eq('id', itemId);
-  }
+  Future<void> deleteCustomItem(String itemId) async => await _db.collection('items').doc(itemId).delete();
 }

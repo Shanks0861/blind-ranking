@@ -1,17 +1,13 @@
 import 'package:flutter/material.dart';
 import '../models/category.dart';
-import 'character_image.dart';
 import '../utils/app_theme.dart';
+import 'character_image.dart';
 
 class ItemRevealDialog extends StatefulWidget {
   final GameItem item;
   final VoidCallback onContinue;
 
-  const ItemRevealDialog({
-    super.key,
-    required this.item,
-    required this.onContinue,
-  });
+  const ItemRevealDialog({super.key, required this.item, required this.onContinue});
 
   @override
   State<ItemRevealDialog> createState() => _ItemRevealDialogState();
@@ -26,10 +22,7 @@ class _ItemRevealDialogState extends State<ItemRevealDialog>
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 500),
-    );
+    _controller = AnimationController(vsync: this, duration: const Duration(milliseconds: 500));
     _scaleAnim = CurvedAnimation(parent: _controller, curve: Curves.elasticOut);
     _fadeAnim = CurvedAnimation(parent: _controller, curve: Curves.easeIn);
     _controller.forward();
@@ -59,27 +52,17 @@ class _ItemRevealDialogState extends State<ItemRevealDialog>
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // Label
                 Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 6,
-                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
                   decoration: BoxDecoration(
                     color: AppColors.primary.withOpacity(0.2),
                     borderRadius: BorderRadius.circular(20),
                     border: Border.all(color: AppColors.primary),
                   ),
-                  child: const Text(
-                    '✨ Neues Item!',
-                    style: TextStyle(
-                      color: AppColors.primary,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
+                  child: const Text('✨ Neues Item!',
+                      style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.bold)),
                 ),
                 const SizedBox(height: 20),
-                // Bild
                 CharacterImage(
                   storedUrl: widget.item.imageUrl,
                   characterName: widget.item.name,
@@ -87,18 +70,11 @@ class _ItemRevealDialogState extends State<ItemRevealDialog>
                   fit: BoxFit.cover,
                 ),
                 const SizedBox(height: 16),
-                // Name
-                Text(
-                  widget.item.name,
-                  style: const TextStyle(
-                    color: AppColors.textPrimary,
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
+                Text(widget.item.name,
+                    style: const TextStyle(
+                        color: AppColors.textPrimary, fontSize: 24, fontWeight: FontWeight.bold),
+                    textAlign: TextAlign.center),
                 const SizedBox(height: 24),
-                // Button
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(

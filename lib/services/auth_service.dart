@@ -1,130 +1,50 @@
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/app_user.dart';
 
 class AuthService {
-  final SupabaseClient _client = Supabase.instance.client;
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+  final FirebaseFirestore _db = FirebaseFirestore.instance;
 
-  User? get currentUser => _client.auth.currentUser;
-  bool get isLoggedIn => currentUser != null;
-
-  Stream<AuthState> get authStateChanges => _client.auth.onAuthStateChange;
-
-  Future<AppUser> signUpWithEmail({
-    required String email,
-    required String password,
-    required String displayName,
-  }) async {
-    final response = await _client.auth.signUp(
-      email: email,
-      password: password,
-      data: {'display_name': displayName},
-    );
-
-    // Supabase gibt user zurück auch wenn Email-Confirm aktiv ist
-    final user = response.user;
-    if (user == null) throw Exception('Registrierung fehlgeschlagen');
-
-    // Session kann null sein wenn Email-Confirm aktiv → trotzdem kein Fehler
-    // Profil wird per Trigger angelegt, kein manueller Insert nötig
-    return _buildAppUser(user, displayName, false);
+  Future<AppUser> signUpWithEmail({required String email, required String password, required String displayName}) async {
+    final credential = await _auth.createUserWithEmailAndPassword(email: email, password: password);
+    final user = credential.user!;
+    final appUser = AppUser(id: user.uid, email: email, displayName: displayName, isGuest: false);
+    await _db.collection('profiles').doc(user.uid).set(appUser.toMap());
+    return appUser;
   }
 
-  Future<AppUser> signInWithEmail({
-    required String email,
-    required String password,
-  }) async {
-    final response = await _client.auth.signInWithPassword(
-      email: email,
-      password: password,
-    );
-
-    if (response.user == null) throw Exception('Login fehlgeschlagen');
-
-    final profile = await _fetchProfile(response.user!.id);
-    return _buildAppUser(
-      response.user!,
-      profile?['display_name'] as String? ?? email.split('@').first,
-      false,
-    );
+  Future<AppUser> signInWithEmail({required String email, required String password}) async {
+    final credential = await _auth.signInWithEmailAndPassword(email: email, password: password);
+    final user = credential.user!;
+    final doc = await _db.collection('profiles').doc(user.uid).get();
+    if (doc.exists) return AppUser.fromMap(user.uid, doc.data()!);
+    final appUser = AppUser(id: user.uid, email: email, displayName: email.split('@').first, isGuest: false);
+    await _db.collection('profiles').doc(user.uid).set(appUser.toMap());
+    return appUser;
   }
 
   Future<void> sendPasswordReset(String email) async {
-    await _client.auth.resetPasswordForEmail(email);
+    await _auth.sendPasswordResetEmail(email: email);
   }
 
   Future<AppUser> signInAsGuest({required String displayName}) async {
-    final response = await _client.auth.signInAnonymously();
-    if (response.user == null) throw Exception('Gast-Login fehlgeschlagen');
-
-    final userId = response.user!.id;
-
-    // Profil direkt mit service_role-ähnlichem Ansatz: erst versuchen einzufügen
-    // RLS erlaubt INSERT with check(true) nach unserem Fix
-    try {
-      await _client.from('profiles').upsert({
-        'id': userId,
-        'display_name': displayName,
-        'is_guest': true,
-        'updated_at': DateTime.now().toIso8601String(),
-      }, onConflict: 'id');
-    } catch (_) {
-      // Falls Profil schon existiert (z.B. durch Trigger) → update
-      try {
-        await _client.from('profiles').update({
-          'display_name': displayName,
-          'updated_at': DateTime.now().toIso8601String(),
-        }).eq('id', userId);
-      } catch (_) {
-        // Profil konnte nicht gesetzt werden, aber Login trotzdem durchlassen
-      }
-    }
-
-    return _buildAppUser(response.user!, displayName, true);
+    final credential = await _auth.signInAnonymously();
+    final user = credential.user!;
+    final appUser = AppUser(id: user.uid, displayName: displayName, isGuest: true);
+    await _db.collection('profiles').doc(user.uid).set(appUser.toMap());
+    return appUser;
   }
 
-  Future<AppUser?> fetchCurrentUser() async {
-    final user = currentUser;
-    if (user == null) return null;
-
+  Future<AppUser?> fetchCurrentUser(User firebaseUser) async {
     try {
-      final profile = await _fetchProfile(user.id);
-      final displayName = profile?['display_name'] as String? ??
-          user.email?.split('@').first ??
-          'Gast';
-      final isGuest = profile?['is_guest'] as bool? ?? false;
-      return _buildAppUser(user, displayName, isGuest);
-    } catch (_) {
-      return _buildAppUser(
-        user,
-        user.email?.split('@').first ?? 'Gast',
-        false,
-      );
-    }
-  }
-
-  Future<void> signOut() async {
-    await _client.auth.signOut();
-  }
-
-  Future<Map<String, dynamic>?> _fetchProfile(String userId) async {
-    try {
-      final result = await _client
-          .from('profiles')
-          .select()
-          .eq('id', userId)
-          .maybeSingle();
-      return result;
+      final doc = await _db.collection('profiles').doc(firebaseUser.uid).get();
+      if (doc.exists) return AppUser.fromMap(firebaseUser.uid, doc.data()!);
+      return AppUser(id: firebaseUser.uid, email: firebaseUser.email, displayName: firebaseUser.email?.split('@').first ?? 'Gast', isGuest: firebaseUser.isAnonymous);
     } catch (_) {
       return null;
     }
   }
 
-  AppUser _buildAppUser(User user, String displayName, bool isGuest) {
-    return AppUser(
-      id: user.id,
-      email: user.email,
-      displayName: displayName,
-      isGuest: isGuest,
-    );
-  }
+  Future<void> signOut() async => await _auth.signOut();
 }

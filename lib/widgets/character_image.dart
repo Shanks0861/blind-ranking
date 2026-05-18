@@ -18,11 +18,7 @@ class CharacterImage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final url = storedUrl;
-
-    if (url == null || url.isEmpty) {
-      return _placeholder();
-    }
-
+    if (url == null || url.isEmpty) return _placeholder();
     return ClipRRect(
       borderRadius: BorderRadius.circular(8),
       child: Image.network(
@@ -37,10 +33,7 @@ class CharacterImage extends StatelessWidget {
             height: size,
             color: AppColors.surfaceVariant,
             child: const Center(
-              child: CircularProgressIndicator(
-                strokeWidth: 1.5,
-                color: AppColors.primary,
-              ),
+              child: CircularProgressIndicator(strokeWidth: 1.5, color: AppColors.primary),
             ),
           );
         },
@@ -57,11 +50,7 @@ class CharacterImage extends StatelessWidget {
         color: AppColors.surfaceVariant,
         borderRadius: BorderRadius.circular(8),
       ),
-      child: Icon(
-        Icons.person_outline,
-        color: AppColors.textSecondary,
-        size: size * 0.5,
-      ),
+      child: Icon(Icons.person_outline, color: AppColors.textSecondary, size: size * 0.5),
     );
   }
 }
