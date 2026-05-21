@@ -46641,7 +46641,7 @@ return A.q($async$$1,r)},
 $S:173}
 A.l_.prototype={
 ajK(a){if(B.c.u(a,"raw.githubusercontent.com")||B.c.u(a,"upload.wikimedia.org"))return a
-if(B.c.u(a,"cdn.myanimelist.net"))return"https://api.allorigins.win/raw?url="+A.IQ(2,a,B.as,!1)
+if(B.c.u(a,"cdn.myanimelist.net"))return"https://images.weserv.nl/?url="+A.IQ(2,a,B.as,!1)+"&w=200&h=200&fit=cover"
 return a},
 K(a){var s,r,q=this,p=q.c
 if(p==null||p.length===0)return q.T_()
