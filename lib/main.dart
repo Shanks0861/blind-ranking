@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'models/app_user.dart';
 import 'services/auth_service.dart';
 import 'services/lobby_service.dart';
@@ -12,6 +13,13 @@ import 'firebase_options.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+
+  // Fix für Flutter Web — verhindert WebChannel CORS Fehler
+  FirebaseFirestore.instance.settings = const Settings(
+    persistenceEnabled: false,
+    sslEnabled: true,
+  );
+
   runApp(const BlindRankingApp());
 }
 
@@ -62,7 +70,8 @@ class _RootNavigatorState extends State<RootNavigator> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Text('Blind Ranking', style: TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold)),
+              Text('Blind Ranking',
+                  style: TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold)),
               SizedBox(height: 24),
               CircularProgressIndicator(color: Color(0xFF6C63FF)),
             ],

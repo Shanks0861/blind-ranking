@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/lobby.dart';
@@ -61,7 +62,8 @@ class GameService {
 
     if (existing.docs.isNotEmpty) {
       await existing.docs.first.reference.update(payload);
-      return PlayerRanking.fromMap(existing.docs.first.id, {...existing.docs.first.data(), ...payload});
+      return PlayerRanking.fromMap(existing.docs.first.id,
+          {...existing.docs.first.data(), ...payload});
     } else {
       final ref = await _db.collection('player_rankings').add(payload);
       return PlayerRanking.fromMap(ref.id, payload);
@@ -133,28 +135,32 @@ class GameService {
         .toList();
   }
 
+  // Polling statt Streams — vermeidet WebChannel CORS Fehler auf Flutter Web
   Stream<Map<String, dynamic>?> watchSession(String sessionId) {
-    return _db
-        .collection('game_sessions')
-        .doc(sessionId)
-        .snapshots()
-        .map((snap) => snap.exists ? snap.data() : null);
+    return Stream.periodic(const Duration(seconds: 2)).asyncMap((_) async {
+      final doc = await _db.collection('game_sessions').doc(sessionId).get();
+      return doc.exists ? doc.data() : null;
+    });
   }
 
   Stream<List<Map<String, dynamic>>> watchRankings(String sessionId) {
-    return _db
-        .collection('player_rankings')
-        .where('session_id', isEqualTo: sessionId)
-        .snapshots()
-        .map((snap) => snap.docs.map((d) => d.data()).toList());
+    return Stream.periodic(const Duration(seconds: 2)).asyncMap((_) async {
+      final snap = await _db
+          .collection('player_rankings')
+          .where('session_id', isEqualTo: sessionId)
+          .get();
+      return snap.docs.map((d) => d.data()).toList();
+    });
   }
 
   Stream<List<Map<String, dynamic>>> watchVotes(String sessionId) {
-    return _db
-        .collection('votes')
-        .where('session_id', isEqualTo: sessionId)
-        .snapshots()
-        .map((snap) => snap.docs.map((d) => d.data()).toList());
+    return Stream.periodic(const Duration(seconds: 2)).asyncMap((_) async {
+      final snap = await _db
+          .collection('votes')
+          .where('session_id', isEqualTo: sessionId)
+          .get();
+      return snap.docs.map((d) => d.data()).toList();
+    });
   }
 
   int _itemCountForSize(ListSize size) {
