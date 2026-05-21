@@ -16,12 +16,14 @@ class CharacterImage extends StatelessWidget {
   });
 
   String _resolveUrl(String url) {
+    // PokeAPI & Wikipedia → direkt, kein CORS Problem
     if (url.contains('raw.githubusercontent.com') ||
         url.contains('upload.wikimedia.org')) {
       return url;
     }
+    // MAL CDN → durch images.weserv.nl (zuverlässigster kostenloser Proxy)
     if (url.contains('cdn.myanimelist.net')) {
-      return 'https://api.allorigins.win/raw?url=${Uri.encodeComponent(url)}';
+      return 'https://images.weserv.nl/?url=${Uri.encodeComponent(url)}&w=200&h=200&fit=cover';
     }
     return url;
   }
