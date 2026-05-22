@@ -15,28 +15,14 @@ class CharacterImage extends StatelessWidget {
     this.fit = BoxFit.cover,
   });
 
-  String _resolveUrl(String url) {
-    // PokeAPI & Wikipedia → direkt, kein CORS Problem
-    if (url.contains('raw.githubusercontent.com') ||
-        url.contains('upload.wikimedia.org')) {
-      return url;
-    }
-    // MAL CDN → durch images.weserv.nl (zuverlässigster kostenloser Proxy)
-    if (url.contains('cdn.myanimelist.net')) {
-      return 'https://images.weserv.nl/?url=${Uri.encodeComponent(url)}&w=200&h=200&fit=cover';
-    }
-    return url;
-  }
-
   @override
   Widget build(BuildContext context) {
     final url = storedUrl;
     if (url == null || url.isEmpty) return _placeholder();
-    final resolvedUrl = _resolveUrl(url);
     return ClipRRect(
       borderRadius: BorderRadius.circular(8),
       child: Image.network(
-        resolvedUrl,
+        url,
         width: size,
         height: size,
         fit: fit,
